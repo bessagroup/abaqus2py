@@ -1,8 +1,4 @@
-<p align="center">
-  <a href=""><img alt="logo" src="https://user-images.githubusercontent.com/25851824/200928507-a65327f9-bc70-4c12-beaa-bc6ba74d968e.svg" width="60%"></a>
-</p>
-
-# Bessa Group Python repository template
+# Abaqus2Py
 
 
 [**Docs**](https://bessagroup.github.io/abaqus2py/)
