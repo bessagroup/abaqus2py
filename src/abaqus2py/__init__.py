@@ -1,14 +1,15 @@
 """
-bessa-pypi-template - Template repository for Python packages following
+abaqus2py - Template repository for Python packages following
 the Bessa Group's conventions
 
 This package contains a template for Python packages following
 the Bessa Group's conventions.
 
 Usage:
-  import bessa-pypi-template
+  import abaqus2py
 
-Author: Your Name (youremailadress@email.com)
+Author: Jiaxiang Yi (J.Yi@tudelft.nl) and
+Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)
 """
 
 #                                                                       Modules
@@ -23,8 +24,8 @@ from .example_module import add_one
 
 #                                                        Authorship and Credits
 # =============================================================================
-__author__ = 'Your Name (youremailadress@email.com)'
-__credits__ = ['Your Name']
+__author__ = 'Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)'
+__credits__ = ['Martin van der Schelling', 'Jiaxiang Yi']
 __status__ = 'Stable'
 # =============================================================================
 #

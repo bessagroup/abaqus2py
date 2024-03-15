@@ -5,12 +5,12 @@
 # Bessa Group Python repository template
 
 
-[**Docs**](https://bessagroup.github.io/bessa-pypi-template/)
-| [**GitHub**](https://github.com/bessagroup/bessa-pypi-template)
+[**Docs**](https://bessagroup.github.io/abaqus2py/)
+| [**GitHub**](https://github.com/bessagroup/abaqus2py)
 <!-- | [**Installation**](link_to_installation_instructions) -->
 <!-- | [**PyPI**](link_to_pypi_package_website) -->
 
-**First publication:** June 14, 2022
+**First publication:** March 15, 2024
 
 ***
 
@@ -28,15 +28,17 @@ Members of the Bessa Research Group can use this template to create new Python r
 ## Authorship
 
 **Authors**:
+- Jiaxiang Yi ([J.Yi@tudelft.nl](mailto:J.Yi@tudelft.nl))
 - Martin van der Schelling ([M.P.vanderSchelling@tudelft.nl](mailto:M.P.vanderSchelling@tudelft.nl))
 
 **Authors afilliation:**
 - Bessa Research Group @ Delft University of Technology
 
-**Maintainer:**
+**Maintainers:**
+- Jiaxiang Yi ([J.Yi@tudelft.nl](mailto:J.Yi@tudelft.nl))
 - Martin van der Schelling ([M.P.vanderSchelling@tudelft.nl](mailto:M.P.vanderSchelling@tudelft.nl))
 
-**Maintainer afilliation:**
+**Maintainers afilliation:**
 - Bessa Research Group @ Delft University of Technology
 
 
@@ -54,14 +56,14 @@ If you have an existing repository, you can clone the repository to your local m
 
 ## Community Support
 
-If you find any **issues, bugs or problems** with this template, please use the [GitHub issue tracker](https://github.com/bessagroup/bessa-pypi-template/issues) to report them.
+If you find any **issues, bugs or problems** with this template, please use the [GitHub issue tracker](https://github.com/bessagroup/abaqus2py/issues) to report them.
 
 
 ## License
 
-Copyright 2023, Martin van der Schelling
+Copyright 2023, Bessa Research Group
 
 All rights reserved.
 
-This project is licensed under the BSD 3-Clause License. See [LICENSE](https://github.com/bessagroup/bessa-pypi-template/blob/main/LICENSE) for the full license text.
+This project is licensed under the BSD 3-Clause License. See [LICENSE](https://github.com/bessagroup/abaqus2py/blob/main/LICENSE) for the full license text.
 

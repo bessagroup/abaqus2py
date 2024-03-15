@@ -5,5 +5,5 @@
    :template: custom-module-template.rst
    :recursive:
 
-   bessapypitemplate
+   abaqus2py
    

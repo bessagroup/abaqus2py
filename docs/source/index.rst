@@ -1,5 +1,5 @@
-bessapypitemplate
-=================
+abaqus2py
+=========
 
 .. toctree::
    :maxdepth: 3
@@ -13,7 +13,7 @@ bessapypitemplate
    :caption: API
    :hidden:
 
-   Code <_autosummary/bessapypitemplate>
+   Code <_autosummary/abaqus2py>
 
 .. include:: readme.rst
 
