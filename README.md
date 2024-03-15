@@ -57,7 +57,7 @@ If you find any **issues, bugs or problems** with this template, please use the 
 
 ## License
 
-Copyright 2023, Bessa Research Group
+Copyright 2024, Bessa Research Group
 
 All rights reserved.
 
