@@ -42,7 +42,7 @@ def create_preprocess_script(
             f"from {python_file.stem} import {function_name}\n"
         )
         f.write(
-            f"with open(r'{working_dir / Path(FILENAME_SIMINFO).with_suffix('.pkl')}', 'rb') as f:\n")
+            f"with open(r'{working_dir / Path(FILENAME_SIMINFO).with_suffix('.pkl')}', 'rb') as f:\n")  # NOQA
         f.write("    dict = pickle.load(f)\n")
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(f"{function_name}(dict)\n")
@@ -58,7 +58,7 @@ def create_submit_script(working_dir: Path, inp_file: Path, num_cpus: int):
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(
             f"modelJob = mdb.JobFromInputFile(inputFileName="
-            f"r'{inp_file.with_suffix('.inp')}',"
+            f"r'{inp_file}',"
             f"name='{inp_file.stem}',"
             f"numCpus={num_cpus})\n")
         f.write("modelJob.submit(consistencyChecking=OFF)\n")
