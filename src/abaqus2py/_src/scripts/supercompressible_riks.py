@@ -22,7 +22,7 @@ from part import EdgeArray
 
 def main(dict):  # = 'lin_buckle'):
     model_name = 'SUPERCOMPRESSIBLE_RIKS'
-    job_number = int(dict['job_number'])
+    job_number = 'SUPERCOMPRESSIBLE_RIKS'  # int(dict['job_number'])
 
     # Flag
     circular = dict['circular']  # True or False
