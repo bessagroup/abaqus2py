@@ -345,7 +345,7 @@ def main(dict):
         file.writelines(lines)
 
     # # create job
-    # modelJob = mdb.JobFromInputFile(inputFileName='{}.inp'.format(job_name),
-    #                                 name=job_name)
+    modelJob = mdb.JobFromInputFile(inputFileName='{}.inp'.format(job_number),
+                                    name=job_number)
     # modelJob.submit(consistencyChecking=OFF)
     # modelJob.waitForCompletion()

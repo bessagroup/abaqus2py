@@ -21,6 +21,7 @@ FILENAME_PREPROCESS = "preprocess"
 FILENAME_SUBMIT = "execute"
 FILENAME_POSTPROCESS = "post"
 FILENAME_SIMINFO = "sim_info"
+DEFAULT_JOBNAME = "simulation"
 
 
 def write_sim_info(sim_info: dict, working_dir: Path) -> None:
@@ -85,8 +86,8 @@ def create_postprocess_script(
         f.write(f"{function_name}(odb)\n")
 
 
-def remove_files(
-    directory: str,
+def remove_temporary_files(
+    directory: Path,
     file_types: list = [".log", ".lck", ".SMABulk",
                         ".rec", ".SMAFocus",
                         ".exception", ".simlog", ".023", ".exception"],
@@ -95,17 +96,14 @@ def remove_files(
 
     Parameters
     ----------
-    directory : str
+    directory : Path
         Target folder.
     file_types : list
         List of file extensions to be removed.
     """
-    # Create a Path object for the directory
-    dir_path = Path(directory)
-
     for target_file in file_types:
         # Use glob to find files matching the target extension
-        target_files = dir_path.glob(f"*{target_file}")
+        target_files = directory.glob(f"*{target_file}")
 
         # Remove the target files if they exist
         for file in target_files:

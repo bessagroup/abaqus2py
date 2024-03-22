@@ -20,7 +20,10 @@ Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)
 # Third-party
 
 # Local
-from .example_module import add_one
+from ._src._logger import logger
+from ._src.abaqus_simulator import AbaqusSimulator
+
+# from .example_module import add_one
 
 #                                                        Authorship and Credits
 # =============================================================================
