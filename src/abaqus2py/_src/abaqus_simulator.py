@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Optional
 
 # Local
 from ._logger import logger
@@ -32,10 +32,28 @@ __status__ = "Alpha"
 
 
 def abaqus_call(script: Path) -> None:
+    """
+    Call Abaqus with a python script
+
+    Parameters
+    ----------
+    script : Path
+        Path to the python script
+    """
     os.system(f"abaqus cae noGUI={script.with_suffix('.py')} -mesa")
 
 
 def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
+    """
+    Submit the simulation to Abaqus
+
+    Parameters
+    ----------
+    inp_file : Path
+        Path to the input file
+    num_cpus : int
+        Number of CPUs to use for the simulation
+    """
     os.system(f"abaqus job={inp_file} cpus={num_cpus}")
 
 
@@ -43,7 +61,7 @@ class AbaqusSimulator:
     def __init__(self, num_cpus: int = 1,
                  delete_odb: bool = False,
                  delete_temp_files: bool = False,
-                 working_directory: Path | str = Path.cwd()):
+                 working_directory: Optional[str | Path] = None):
         """
         Abaqus simulator class
 
@@ -57,12 +75,17 @@ class AbaqusSimulator:
             Delete the temporary files after the simulation
         working_directory : Path | str
             Working directory where subdirectories will be created
-            for simulation results
+            for simulation results, by default the current working directory
         """
         self.num_cpus = num_cpus
         self.delete_odb = delete_odb
         self.delete_temp_files = delete_temp_files
-        self.working_directory = Path(working_directory)
+
+        if working_directory is None:
+            self.working_directory = Path.cwd()
+
+        else:
+            self.working_directory = Path(working_directory)
 
 #                                                                Public methods
 # =============================================================================
@@ -70,7 +93,7 @@ class AbaqusSimulator:
     def preprocess(
             self, py_file: str, function_name: str = "main",
             simulation_parameters: Iterable[
-                Dict[str, Any]] | Dict[str, Any] = None) -> Path:
+                Dict[str, Any]] | Dict[str, Any] = None):
         """
         Create the input files (.inp) for the simulation with a
         preprocessing script
@@ -81,49 +104,32 @@ class AbaqusSimulator:
             Path to the python file
         function_name : str
             Name of the function to call, default is "main"
-        simulation_parameters : dict | list
+        simulation_parameters : dict | Iterable[dict]
             Key-word arguments with the simulation parameters
-
-        Returns
-        -------
-        Path
-            Path to the input file (.inp)
         """
 
         # Create an empty dictionary if no simulation parameters are given
         if simulation_parameters is None:
             simulation_parameters = {}
 
-        # If an iterable; loop over the simulation parameters
-        if isinstance(simulation_parameters, (list, tuple, set)):
-            for name, sim_params in enumerate(simulation_parameters):
+        if isinstance(simulation_parameters, dict):
+            simulation_parameters = [simulation_parameters]
 
-                # Check if there is a key 'name' in the dictionary
-                if "name" not in sim_params:
-                    sim_params["name"] = f"{DEFAULT_JOBNAME}_{name}"
+        # Loop over the simulation parameters
+        for index, sim_params in enumerate(simulation_parameters):
 
+            # Check if there is a key 'name' in the dictionary
+            if "name" in sim_params:
                 name = sim_params["name"]
 
-                self._preprocess(
-                    py_file=Path(py_file),
-                    working_dir=self.working_directory / str(name),
-                    function_name=function_name,
-                    **sim_params)
+            else:
+                name = f"{DEFAULT_JOBNAME}_{index}"
 
-        else:
-            # Check if there is a key 'name' in the dictionary
-            if "name" not in simulation_parameters:
-                simulation_parameters["name"] = DEFAULT_JOBNAME
-
-            name = simulation_parameters["name"]
-
-            self._preprocess(
+            _ = self._preprocess(
                 py_file=Path(py_file),
                 working_dir=self.working_directory / str(name),
                 function_name=function_name,
-                **simulation_parameters)
-
-        # return (self.working_directory / str(name)).with_suffix('.inp')
+                **sim_params)
 
     def submit(self, inp_files: Iterable[str] | str) -> None:
         """
@@ -134,14 +140,12 @@ class AbaqusSimulator:
         inp_files : str | list
             Path to the input file(s)
         """
-        if isinstance(inp_files, (list, tuple, set)):
-            for inp_file in inp_files:
-                self._submit(inp_file=Path(inp_file),
-                             working_dir=Path(inp_file).parent)
+        if isinstance(inp_files, str):
+            inp_files = [inp_files]
 
-        else:
-            self._submit(inp_file=Path(inp_files),
-                         working_dir=Path(inp_files).parent)
+        # if isinstance(inp_files, (list, tuple, set)):
+        for inp_file in inp_files:
+            self._submit(inp_file=Path(inp_file))
 
     def postprocess(self, py_file: str, odb_files: Iterable[str] | str,
                     function_name: str = "main") -> None:
@@ -158,58 +162,74 @@ class AbaqusSimulator:
         function_name : str
             Name of the function to call, default is "main"
         """
-        if isinstance(odb_files, (list, tuple, set)):
-            for odb_file in odb_files:
-                self._postprocess(python_file=Path(py_file),
-                                  odb_file=Path(odb_file).with_suffix(".odb"),
-                                  function_name=function_name)
+        if isinstance(odb_files, str):
+            odb_files = [odb_files]
 
-        else:
+        # if isinstance(odb_files, (list, tuple, set)):
+        for odb_file in odb_files:
             self._postprocess(python_file=Path(py_file),
-                              odb_file=Path(odb_files).with_suffix(".odb"),
+                              odb_file=Path(odb_file).with_suffix(".odb"),
                               function_name=function_name)
 
-    # def run(
-    #         self, py_file: str, function_name: str = "main",
-    #         post_py_file: Optional[str] = None,
-    #         simulation_parameters: Iterable[Dict[str, Any]] | Dict[str, Any]
-            # = None):
+    def run(
+            self, py_file: str, function_name: str = "main",
+            post_py_file: Optional[str] = None,
+            simulation_parameters: Iterable[Dict[str, Any]] | Dict[str, Any]
+            = None,
+            submit_job: bool = True):
+        """
+        Run the full simulation process
 
-    #     # Create an empty dictionary if no simulation parameters are given
-    #     if simulation_parameters is None:
-    #         simulation_parameters = {}
+        Parameters
+        ----------
+        py_file : str
+            Path to the pre-processing python file to create the input file
+        function_name : str
+            Name of the pre-processing function to call, default is "main"
+        post_py_file : str
+            Path to the postprocessing python file, optional
+        simulation_parameters : dict | Iterable[dict]
+            Key-word arguments with the simulation parameters
+        submit_job : bool
+            Whether to submit the job to Abaqus, default is True
+        """
 
-    #     # If an iterable; loop over the simulation parameters
-    #     if isinstance(simulation_parameters, (list, tuple, set)):
-    #         for name, sim_params in enumerate(simulation_parameters):
+        # Create an empty dictionary if no simulation parameters are given
+        if simulation_parameters is None:
+            simulation_parameters = {}
 
-    #             inp_file = self.preprocess(
-    #                 py_file=py_file, function_name=function_name,
-    #                 simulation_parameters=sim_params)
+        if isinstance(simulation_parameters, dict):
+            simulation_parameters = [simulation_parameters]
 
-    #             self.submit(inp_files=inp_file)
+        # If an iterable; loop over the simulation parameters
+        for index, sim_params in enumerate(simulation_parameters):
 
-    #             if post_py_file is not None:
-    #                 self.postprocess(
-    #                     py_file=post_py_file, function_name=function_name,
-    #                     odb_files=inp_file.with_suffix('.odb'))
+            # Check if there is a key 'name' in the dictionary
+            if "name" in sim_params:
+                name = sim_params["name"]
 
-    #     else:
-    #         inp_file = self.preprocess(
-    #             py_file=py_file, function_name=function_name,
-    #             simulation_parameters=simulation_parameters)
+            else:
+                name = f"{DEFAULT_JOBNAME}_{index}"
 
-    #         self.submit(inp_files=inp_file)
+            inp_file = self._preprocess(
+                py_file=Path(py_file),
+                working_dir=self.working_directory / str(name),
+                function_name=function_name,
+                **sim_params)
 
-    #         if post_py_file is not None:
-    #             self.postprocess(
-    #                 py_file=post_py_file, function_name=function_name,
-    #                 odb_files=inp_file.with_suffix('.odb'))
+            if submit_job:
+                self._submit(inp_file=inp_file)
+
+            if post_py_file is not None:
+                self._postprocess(
+                    python_file=Path(post_py_file),
+                    function_name=function_name,
+                    odb_file=inp_file.with_suffix('.odb'))
 
 #                                                               Private methods
 # =============================================================================
 
-    def _submit(self, inp_file: Path, working_dir: Path) -> None:
+    def _submit(self, inp_file: Path) -> None:
         """
         Submit the simulation to Abaqus
 
@@ -219,7 +239,7 @@ class AbaqusSimulator:
             Path to the inp file
         """
 
-        logger.debug(f"Submitting {inp_file.stem} in {working_dir}")
+        logger.debug(f"Submitting {inp_file.stem} in {inp_file.parent}")
 
         # Save current working directory
         cwd = Path.cwd()
@@ -233,25 +253,14 @@ class AbaqusSimulator:
         # Change back to the original working directory
         os.chdir(cwd)
 
-        # # Create the submit script
-        # create_submit_script(
-        #     working_dir=working_dir, inp_file=inp_file,
-        #     num_cpus=self.num_cpus)
-
-        # # Run abaqus
-        # abaqus_call(working_dir / FILENAME_SUBMIT)
-        # if self.delete_temp_files:
-        #     (working_dir / FILENAME_SUBMIT).with_suffix(".py").unlink(
-        #         missing_ok=True)
-
-        logger.debug(f"Submitted {inp_file.stem} in {working_dir}")
+        logger.debug(f"Submitted {inp_file.stem} in {inp_file.parent}")
 
         if self.delete_temp_files:
             remove_temporary_files(directory=inp_file.parent)
 
     def _preprocess(self, py_file: Path, working_dir: Path,
                     function_name: str,
-                    **simulation_parameters) -> None:
+                    **simulation_parameters) -> Path:
         """
         Create the input files for the simulation with a preprocessing script
 
@@ -265,6 +274,11 @@ class AbaqusSimulator:
             Name of the function to call
         simulation_parameters : dict
             Key-word arguments with the simulation parameters
+
+        Returns
+        -------
+        Path
+            Path to the input file (.inp)
         """
 
         logger.debug(f"Preprocessing started with {py_file} in {working_dir}")
@@ -291,6 +305,12 @@ class AbaqusSimulator:
                 missing_ok=True)
 
         logger.debug(f"Preprocessing finished with {py_file} in {working_dir}")
+
+        try:
+            return working_dir.glob("*.inp").__next__()
+        except StopIteration:
+            raise FileNotFoundError(
+                "No .inp file created in the working directory")
 
     def _postprocess(
             self, python_file: Path, function_name: str, odb_file: Path
