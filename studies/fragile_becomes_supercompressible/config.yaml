@@ -1,0 +1,60 @@
+defaults:
+  - override hydra/job_logging: custom
+
+domain:
+  young_modulus:
+    type: constant
+    value: 3500.0
+  n_longerons:
+    type: constant
+    value: 3
+  bottom_diameter:
+    type: constant
+    value: 100.0
+  ratio_top_diameter:
+    type: float
+    low: 0.0
+    high: 0.8
+  ratio_pitch:
+    type: float
+    low: 0.25
+    high: 1.50
+  ratio_d:
+    type: float
+    low: 0.004
+    high: 0.073
+  ratio_shear_modulus:
+    type: constant
+    value: 0.3677
+  circular:
+    type: constant
+    value: true
+  imperfection:
+    type: float
+    low: 0.0
+    high: 1.0
+
+experimentdata:
+  from_sampling:
+    sampler: "random"
+    seed: 42
+    n_samples: 3
+    domain: ${domain}
+
+mode: sequential
+
+hpc:
+  jobid: -1
+
+imperfection:
+  mean: -2.705021452041446
+  std: 0.293560379208524
+
+scripts:
+  lin_buckle_pre: '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_lin_buckle.py'
+  lin_buckle_post:  '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_lin_buckle_pp.py'
+  riks_pre: '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_riks.py'
+  riks_post: '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_riks_pp.py'
+
+
+log_level: 20

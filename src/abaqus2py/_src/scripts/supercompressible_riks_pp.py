@@ -7,6 +7,7 @@ Last modified on 2020-09-23 07:10:39
 
 import pickle
 
+import numpy as np
 # imports
 from abaqus import session  # NOQA
 
@@ -26,7 +27,8 @@ def main(odb):
     # reference point data
     variables = ['U', 'UR', 'RF', 'RM']
     set_name = 'ZTOP_REF_POINT'
-    step = odb.steps[odb.steps.keys()[-1]]
+    step_name = 'RIKS_STEP'
+    step = odb.steps[step_name]
     directions = (1, 2, 3)
     nodes = odb.rootAssembly.nodeSets[set_name].nodes[0]
     # get variables
@@ -43,7 +45,7 @@ def main(odb):
                     [data[1] for data in historyOutputs['%s%i' % (
                         variable, direction)].data])
             y.append(node_data)
-        riks_results[variable] = y[0]
+        riks_results[variable] = np.array(y[0])
 
     # deformation
     frames = step.frames
@@ -60,7 +62,7 @@ def main(odb):
                                 for output in outputs])
         values.append(output_frame)
 
-    riks_results[variable] = values
+    riks_results[variable] = np.array(values)
 
     with open('results.pkl', 'wb') as file:
         pickle.dump(riks_results, file)

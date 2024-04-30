@@ -39,7 +39,7 @@ def main(dict):  # = 'lin_buckle'):
 
     # Output from linear buckling analysis
     # coilable = dict['coilable']
-    lin_bckl_max_disp = dict['path_max_disps']
+    lin_bckl_max_disp = dict['max_disps']
     lin_buckle_odb = dict['lin_buckle_odb']
 
     # Imperfection

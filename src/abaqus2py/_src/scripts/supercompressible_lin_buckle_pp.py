@@ -76,8 +76,8 @@ def main(odb):
     coilable = int(abs(ur[0][0]) > 1.0e-4 and abs(u[0][0])
                    < 1.0e-4 and abs(u[1][0]) < 1.0e-4)
 
-    buckling_results = {'max_disps': max_disps,
-                        'loads': eigenvalues,
+    buckling_results = {'max_disps': np.array(max_disps),
+                        'loads': np.array(eigenvalues),
                         'coilable': coilable,
                         'lin_buckle_odb': odb.name}
 

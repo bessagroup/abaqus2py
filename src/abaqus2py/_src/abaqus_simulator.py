@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from time import sleep
 from typing import Any, Dict, Iterable, Optional
 
 # Local
@@ -26,8 +27,6 @@ __credits__ = ["Martin van der Schelling"]
 __status__ = "Alpha"
 # =============================================================================
 #
-# =============================================================================
-
 # =============================================================================
 
 
@@ -61,26 +60,35 @@ class AbaqusSimulator:
     def __init__(self, num_cpus: int = 1,
                  delete_odb: bool = False,
                  delete_temp_files: bool = False,
-                 working_directory: Optional[str | Path] = None):
+                 working_directory: Optional[str | Path] = None,
+                 sleep_time_after_job: int = 0):
         """
         Abaqus simulator class
 
         Parameters
         ----------
         num_cpus : int
-            Number of CPUs to use for the simulation
+            Number of CPUs to use for the simulation.
         delete_odb : bool
-            Delete the odb file after the simulation
+            If True, the created odb file is removed after post-processing.
+            Can be used to save disk space, default is False.
         delete_temp_files : bool
-            Delete the temporary files after the simulation
+            If True, temporary files created by Abaqus are removed after
+            the simulation, default is False.
         working_directory : Path | str
             Working directory where subdirectories will be created
-            for simulation results, by default the current working directory
+            for simulation results, by default the current working directory.
+        sleep_time_after_job : int
+            Time to sleep in seconds after submitting a job, default is 0.
+            This is a workaround to wait for the job to finish.
+
         """
         self.num_cpus = num_cpus
         self.delete_odb = delete_odb
         self.delete_temp_files = delete_temp_files
+        self.sleep_time_after_job = sleep_time_after_job
 
+        # If None, set to current working directory.
         if working_directory is None:
             self.working_directory = Path.cwd()
 
@@ -143,7 +151,6 @@ class AbaqusSimulator:
         if isinstance(inp_files, str):
             inp_files = [inp_files]
 
-        # if isinstance(inp_files, (list, tuple, set)):
         for inp_file in inp_files:
             self._submit(inp_file=Path(inp_file))
 
@@ -165,7 +172,6 @@ class AbaqusSimulator:
         if isinstance(odb_files, str):
             odb_files = [odb_files]
 
-        # if isinstance(odb_files, (list, tuple, set)):
         for odb_file in odb_files:
             self._postprocess(python_file=Path(py_file),
                               odb_file=Path(odb_file).with_suffix(".odb"),
@@ -219,6 +225,9 @@ class AbaqusSimulator:
 
             if submit_job:
                 self._submit(inp_file=inp_file)
+
+            # Workaround to wait for the job to finish
+            sleep(self.sleep_time_after_job)
 
             if post_py_file is not None:
                 self._postprocess(
@@ -306,11 +315,12 @@ class AbaqusSimulator:
 
         logger.debug(f"Preprocessing finished with {py_file} in {working_dir}")
 
+        # Search the subdirectory for the .inp file and return the path
         try:
             return working_dir.glob("*.inp").__next__()
         except StopIteration:
             raise FileNotFoundError(
-                "No .inp file created in the working directory")
+                f"No .inp file created in the working directory: {working_dir}")
 
     def _postprocess(
             self, python_file: Path, function_name: str, odb_file: Path

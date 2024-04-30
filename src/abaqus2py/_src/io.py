@@ -8,6 +8,7 @@ IO functions for the abaqus2py package.
 # Standard
 import pickle
 from pathlib import Path
+from typing import List
 
 #                                                          Authorship & Credits
 # =============================================================================
@@ -102,18 +103,17 @@ def create_postprocess_script(
         f.write(
             f"from {python_file.stem} import {function_name}\n"
         )
-        f.write(
-            f"odb = session.openOdb(\
-                name=r'{odb_file.with_suffix('.odb')}')\n")
+        f.write((f"odb = session.openOdb("
+                f"name=r'{odb_file.with_suffix('.odb')}')\n"))
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(f"{function_name}(odb)\n")
 
 
 def remove_temporary_files(
     directory: Path,
-    file_types: list = [".log", ".lck", ".SMABulk",
-                        ".rec", ".SMAFocus",
-                        ".exception", ".simlog", ".023", ".exception"],
+    file_types: List[str] = [".log", ".lck", ".SMABulk",
+                             ".rec", ".SMAFocus",
+                             ".exception", ".simlog", ".023", ".exception"],
 ) -> None:
     """Remove files of specified types in a directory.
 
