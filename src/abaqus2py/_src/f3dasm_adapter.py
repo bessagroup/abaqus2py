@@ -13,14 +13,14 @@ except ImportError:
 class F3DASMAbaqusSimulator(DataGenerator):
     def __init__(
             self, py_file: str, function_name: str = "main", post_py_file: Optional[str] = None, num_cpus: int = 1, delete_odb: bool = False,
-            delete_temp_files: bool = False, working_directory: Optional[str] = None, sleep_time_after_job: int = 0
+            delete_temp_files: bool = False, working_directory: Optional[str] = None, max_waiting_time: int = 60
     ):
 
         self.simulator = AbaqusSimulator(
             num_cpus=num_cpus, delete_odb=delete_odb,
             delete_temp_files=delete_temp_files,
             working_directory=working_directory,
-            sleep_time_after_job=sleep_time_after_job)
+            max_waiting_time=max_waiting_time)
 
         self.py_file = py_file
         self.function_name = function_name

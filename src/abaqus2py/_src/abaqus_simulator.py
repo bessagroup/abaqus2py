@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from time import sleep
+from time import sleep, time
 from typing import Any, Dict, Iterable, Optional
 
 # Local
@@ -18,7 +18,7 @@ from ._logger import logger
 from .io import (DEFAULT_JOBNAME, FILENAME_POSTPROCESS, FILENAME_PREPROCESS,
                  FILENAME_SIMINFO, create_postprocess_script,
                  create_preprocess_script, remove_temporary_files,
-                 write_sim_info)
+                 wait_until_text_verification, write_sim_info)
 
 #                                                          Authorship & Credits
 # =============================================================================
@@ -61,7 +61,7 @@ class AbaqusSimulator:
                  delete_odb: bool = False,
                  delete_temp_files: bool = False,
                  working_directory: Optional[str | Path] = None,
-                 sleep_time_after_job: int = 0):
+                 max_waiting_time: int = 60):
         """
         Abaqus simulator class
 
@@ -78,15 +78,15 @@ class AbaqusSimulator:
         working_directory : Path | str
             Working directory where subdirectories will be created
             for simulation results, by default the current working directory.
-        sleep_time_after_job : int
-            Time to sleep in seconds after submitting a job, default is 0.
-            This is a workaround to wait for the job to finish.
+        max_waiting_time : int
+            Maximum time to wait in seconds after submitting a job
+            ,default is 60. This is a workaround to wait for the job to finish.
 
         """
         self.num_cpus = num_cpus
         self.delete_odb = delete_odb
         self.delete_temp_files = delete_temp_files
-        self.sleep_time_after_job = sleep_time_after_job
+        self.max_waiting_time = max_waiting_time
 
         # If None, set to current working directory.
         if working_directory is None:
@@ -226,8 +226,18 @@ class AbaqusSimulator:
             if submit_job:
                 self._submit(inp_file=inp_file)
 
+            wait_until_text_verification(
+                working_dir=self.working_directory / str(name),
+                file_extension=".log",
+                text="Begin Analysis Input File Processor",
+                max_waiting_time=self.max_waiting_time)
+
             # Workaround to wait for the job to finish
-            sleep(self.sleep_time_after_job)
+            wait_until_text_verification(
+                working_dir=self.working_directory / str(name),
+                file_extension=".msg",
+                text="THE ANALYSIS HAS BEEN COMPLETED",
+                max_waiting_time=self.max_waiting_time)
 
             if post_py_file is not None:
                 self._postprocess(

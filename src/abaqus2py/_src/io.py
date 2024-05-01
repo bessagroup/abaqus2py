@@ -8,6 +8,7 @@ IO functions for the abaqus2py package.
 # Standard
 import pickle
 from pathlib import Path
+from time import sleep, time
 from typing import List
 
 #                                                          Authorship & Credits
@@ -140,3 +141,31 @@ def remove_temporary_files(
         for file in target_files:
             if file.is_file():
                 file.unlink()
+
+
+def wait_until_text_verification(
+        working_dir: Path,
+        file_extension: str,
+        text: str,
+        max_waiting_time: int) -> None:
+    # workaround
+    # sleep(max_waiting_time)
+    start_time = time()
+
+    while (time() - start_time < max_waiting_time):
+        if not any(working_dir.glob(file_extension)):
+            sleep(1)
+            continue
+
+        filename = working_dir.glob(file_extension).__next__()
+        file = open(filename)
+
+        if text in file.read():
+            break
+
+        sleep(1)
+
+    raise TimeoutError((
+        f"Did not find {text} in {file_extension} file within "
+        f"{max_waiting_time} seconds")
+    )

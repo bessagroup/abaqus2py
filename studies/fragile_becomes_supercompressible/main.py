@@ -43,13 +43,16 @@ __status__ = 'Stable'
 def pre_processing(config):
     experimentdata = ExperimentData.from_yaml(config.experimentdata)
 
-    # lognormal distribution
-    sampled_imperfections = np.random.lognormal(
-        config.imperfection.mean, config.imperfection.std, len(experimentdata))
-    i = experimentdata._input_data.columns.iloc('imperfection')
-    experimentdata._input_data.data[i] = sampled_imperfections.reshape(-1, 1)
+    if 'from_sampling' in config.imperfection:
+        # lognormal distribution
+        sampled_imperfections = np.random.lognormal(
+            config.imperfection.mean, config.imperfection.std, len(
+                experimentdata))
+        i = experimentdata._input_data.columns.iloc('imperfection')
+        experimentdata._input_data.data[i] = sampled_imperfections.reshape(
+            -1, 1)
 
-    experimentdata.store()
+    experimentdata.store(Path.cwd())
 
     # Create directories for ABAQUS results
     (Path.cwd() / 'lin_buckle').mkdir(exist_ok=True)
@@ -68,11 +71,11 @@ def process(config):
     config
         Hydra configuration file object
     """
-    if 'from_file' in config.experimentdata:
-        project_dir = config.experimentdata.from_file
+    # if 'from_file' in config.experimentdata:
+    #     project_dir = config.experimentdata.from_file
 
-    else:
-        project_dir = Path().cwd()
+    # else:
+    project_dir = Path().cwd()
 
     # Retrieve the ExperimentData object
     max_tries = 500
@@ -94,14 +97,16 @@ def process(config):
         py_file=config.scripts.lin_buckle_pre,
         post_py_file=config.scripts.lin_buckle_post,
         working_directory=Path.cwd() / 'lin_buckle',
-        sleep_time_after_job=5)
+        max_waiting_time=60)
     simulator_riks = F3DASMAbaqusSimulator(
         py_file=config.scripts.riks_pre,
         post_py_file=config.scripts.riks_post,
         working_directory=Path.cwd() / 'riks',
-        sleep_time_after_job=70)
+        max_waiting_time=70)
 
     data.evaluate(data_generator=simulator_lin_buckle, mode=config.mode)
+
+    data.store()
 
     data.mark_all('open')
 

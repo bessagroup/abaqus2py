@@ -1,9 +1,9 @@
 # Fragile becomes supercompressible
 
 <div style="display: flex;">
-    <img src="./img/undeformed.png" style="width: 33.33%;" alt="Image 1">
-    <img src="./img/fifty.png" style="width: 33.33%;" alt="Image 2">
-    <img src="./img/ninety.png" style="width: 33.33%;" alt="Image 3">
+    <img src="./img/undeformed.png" style="width: 20%;" alt="Image 1">
+    <img src="./img/fifty.png" style="width: 20%;" alt="Image 2">
+    <img src="./img/ninety.png" style="width: 20%;" alt="Image 3">
 </div>
 
 <br>
@@ -140,9 +140,12 @@ outputs/
 
 ## Explanation of `config.yaml` parameters
 
+There are two different configurations for this experiment:
+ - The full 7-dimensional problem as defined in the paper
+- The 3-dimensional problem, defined by constraining the longerons' cross-section to be circular with diameter $d$ and choosing a fixed material.
 
+### Common problem domain
 
-### Domain
 #### young_modulus
 | Name       | Type     | Description                |
 |------------|----------|----------------------------|
@@ -170,17 +173,52 @@ outputs/
 | low | `float`     | Lower bound of the pitch ratio |
 | high | `float`     | Upper bound of the pitch ratio |
 
+### 3 dimensional problem domain
+
+
 #### ratio_d ($\frac{d}{D_1}$)
 | Name       | Type     | Description                |
 |------------|----------|----------------------------|
 | low | `float`     | Lower bound of longerons cross-section |
 | high | `float`     | Upper bound of longerons cross-section |
 
-#### ratio_shear_modulus
+#### ratio_shear_modulus ($\frac{G}{E}$)
+| Name       | Type     | Description                |
+|------------|----------|----------------------------|
+| value | `float`     | Lower bound of shear modulus ratio |
+
+### 7 dimensional problem domain
+
+#### ratio_area ($\frac{A}{D_1^2}$)
+| Name       | Type     | Description                |
+|------------|----------|----------------------------|
+| low | `float`     | Lower bound of the area ratio |
+| high | `float`     | Upper bound of the area ratio |
+
+#### ratio_Ixx ($\frac{I_x}{D_1^4}$)
+| Name       | Type     | Description                |
+|------------|----------|----------------------------|
+| low | `float`     | Lower bound of the $I_{xx}$ ratio |
+| high | `float`     | Upper bound of the $I_{xx}$ ratio |
+
+#### ratio_Iyy ($\frac{I_y}{D_1^4}$)
+| Name       | Type     | Description                |
+|------------|----------|----------------------------|
+| low | `float`     | Lower bound of the $I_{yy}$ ratio |
+| high | `float`     | Upper bound of the $I_{yy}$ ratio |
+
+#### ratio_J ($\frac{J}{D_1^4}$)
+| Name       | Type     | Description                |
+|------------|----------|----------------------------|
+| low | `float`     | Lower bound of the $J$ ratio |
+| high | `float`     | Upper bound of the $J$ ratio |
+
+#### ratio_shear_modulus ($\frac{G}{E}$)
 | Name       | Type     | Description                |
 |------------|----------|----------------------------|
 | low | `float`     | Lower bound of shear modulus ratio |
 | high | `float`     | Upper bound of shear modulus ratio |
+
 
 #### circular
 | Name       | Type     | Description                |
