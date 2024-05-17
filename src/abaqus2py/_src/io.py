@@ -11,6 +11,9 @@ from pathlib import Path
 from time import sleep, time
 from typing import List
 
+# Local
+from ._logger import logger
+
 #                                                          Authorship & Credits
 # =============================================================================
 __author__ = "Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)"
@@ -151,24 +154,24 @@ def wait_until_text_verification(
     # workaround
     # sleep(max_waiting_time)
     start_time = time()
-    print(f"Start time: {start_time}")
+    logger.debug(f"Start time: {start_time}")
     success = False
 
     while (time() - start_time < max_waiting_time):
-        print((
+        logger.debug((
             f"waiting for {file_extension} file "
             f"({time() - start_time} < {max_waiting_time})"))
         if not any(working_dir.glob(f"*{file_extension}")):
-            print(f"no {file_extension} file found")
+            logger.debug(f"no {file_extension} file found")
             sleep(1)
             continue
 
         filename = working_dir.glob(f"*{file_extension}").__next__()
-        print(f"found {filename} file!")
+        logger.debug(f"found {filename} file!")
         with open(filename, 'r') as file:
             if text in file.read():
                 success = True
-                print(f"found {text} in {file_extension} file!")
+                logger.debug(f"found {text} in {file_extension} file!")
                 return
 
         sleep(1)

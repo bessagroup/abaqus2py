@@ -3,14 +3,13 @@ defaults:
   - override hydra/job_logging: custom
 
 experimentdata:
-  # from_file: /home/martin/Documents/GitHub/abaqus2py/studies/fragile_becomes_supercompressible/example_design
-  # from_file: ./example_design
+  from_file: ./example_design
 
-  from_sampling:
-    sampler: latin
-    seed: 42
-    n_samples: 3
-    domain: ${domain}
+  # from_sampling:
+  #   sampler: latin
+  #   seed: 42
+  #   n_samples: 3
+  #   domain: ${domain}
 
 mode: sequential
 
@@ -27,10 +26,10 @@ imperfection:
       high: 1.0
 
 scripts:
-  lin_buckle_pre: '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_lin_buckle.py'
-  lin_buckle_post:  '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_lin_buckle_pp.py'
-  riks_pre: '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_riks.py'
-  riks_post: '/home/martin/Documents/GitHub/abaqus2py/src/abaqus2py/_src/scripts/supercompressible_riks_pp.py'
+  lin_buckle_pre: '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_lin_buckle.py'
+  lin_buckle_post:  '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_lin_buckle_pp.py'
+  riks_pre: '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_riks.py'
+  riks_post: '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_riks_pp.py'
 
 
 log_level: 20

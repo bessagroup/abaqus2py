@@ -47,23 +47,22 @@ def main(odb):
             y.append(node_data)
         riks_results[variable] = np.array(y[0])
 
-    # deformation
-    frames = step.frames
-    nodeSet = odb.rootAssembly.elementSets[' ALL ELEMENTS']
-    directions = (1, 3,)
-    variable = 'E'
-    values = []
-    for frame in frames:
-    	print(frame.fieldOutputs.keys())
-        varFieldOutputs = frame.fieldOutputs[variable]
-        outputs = varFieldOutputs.getSubset(region=nodeSet).values
-        output_frame = []
-        for direction in directions:
-            output_frame.append([output.data[direction - 1]
-                                for output in outputs])
-        values.append(output_frame)
+    # # deformation
+    # frames = step.frames
+    # nodeSet = odb.rootAssembly.elementSets[' ALL ELEMENTS']
+    # directions = (1, 3,)
+    # variable = 'E'
+    # values = []
+    # for frame in frames:
+    #     varFieldOutputs = frame.fieldOutputs[variable]
+    #     outputs = varFieldOutputs.getSubset(region=nodeSet).values
+    #     output_frame = []
+    #     for direction in directions:
+    #         output_frame.append([output.data[direction - 1]
+    #                             for output in outputs])
+    #     values.append(output_frame)
 
-    riks_results[variable] = np.array(values)
+    # riks_results[variable] = np.array(values)
 
     with open('results.pkl', 'wb') as file:
         pickle.dump(riks_results, file)
