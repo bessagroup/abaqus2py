@@ -151,21 +151,31 @@ def wait_until_text_verification(
     # workaround
     # sleep(max_waiting_time)
     start_time = time()
+    print(f"Start time: {start_time}")
+    success = False
 
     while (time() - start_time < max_waiting_time):
-        if not any(working_dir.glob(file_extension)):
+        print((
+            f"waiting for {file_extension} file "
+            f"({time() - start_time} < {max_waiting_time})"))
+        if not any(working_dir.glob(f"*{file_extension}")):
+            print(f"no {file_extension} file found")
             sleep(1)
             continue
 
-        filename = working_dir.glob(file_extension).__next__()
-        file = open(filename)
-
-        if text in file.read():
-            break
+        filename = working_dir.glob(f"*{file_extension}").__next__()
+        print(f"found {filename} file!")
+        with open(filename, 'r') as file:
+            if text in file.read():
+                success = True
+                print(f"found {text} in {file_extension} file!")
+                return
 
         sleep(1)
 
-    raise TimeoutError((
-        f"Did not find {text} in {file_extension} file within "
-        f"{max_waiting_time} seconds")
-    )
+    if not success:
+        raise TimeoutError(
+            (f"Did not find {text} in {file_extension} file "
+             f"({working_dir}) within "
+             f"{max_waiting_time} seconds")
+        )

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from time import sleep, time
 from typing import Any, Dict, Iterable, Optional
 
 # Local
@@ -236,7 +235,7 @@ class AbaqusSimulator:
             wait_until_text_verification(
                 working_dir=self.working_directory / str(name),
                 file_extension=".msg",
-                text="THE ANALYSIS HAS BEEN COMPLETED",
+                text="JOB TIME SUMMARY",
                 max_waiting_time=self.max_waiting_time)
 
             if post_py_file is not None:
@@ -329,8 +328,9 @@ class AbaqusSimulator:
         try:
             return working_dir.glob("*.inp").__next__()
         except StopIteration:
-            raise FileNotFoundError(
-                f"No .inp file created in the working directory: {working_dir}")
+            raise FileNotFoundError((
+                f"No .inp file created in the "
+                f"working directory: {working_dir}"))
 
     def _postprocess(
             self, python_file: Path, function_name: str, odb_file: Path

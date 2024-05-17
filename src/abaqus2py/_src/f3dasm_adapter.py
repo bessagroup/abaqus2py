@@ -1,20 +1,62 @@
+"""
+Port to f3dasm framework for the Abaqus simulator
+"""
+
+#                                                                       Modules
+# =============================================================================
+
+# Standard
 import pickle
 from typing import Any, Dict, Optional
 
-from .abaqus_simulator import AbaqusSimulator
-
-# Try importing f3dasm_optimize package
+# Third-party
 try:
     from f3dasm.datageneration import DataGenerator  # NOQA
 except ImportError:
     DataGenerator = object
 
+# Local
+from .abaqus_simulator import AbaqusSimulator
+
+#                                                          Authorship & Credits
+# =============================================================================
+__author__ = "Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)"
+__credits__ = ["Martin van der Schelling"]
+__status__ = "Alpha"
+# =============================================================================
+#
+# =============================================================================
+
 
 class F3DASMAbaqusSimulator(DataGenerator):
     def __init__(
-            self, py_file: str, function_name: str = "main", post_py_file: Optional[str] = None, num_cpus: int = 1, delete_odb: bool = False,
-            delete_temp_files: bool = False, working_directory: Optional[str] = None, max_waiting_time: int = 60
-    ):
+            self, py_file: str, function_name: str = "main",
+            post_py_file: Optional[str] = None, num_cpus: int = 1,
+            delete_odb: bool = False, delete_temp_files: bool = False,
+            working_directory: Optional[str] = None,
+            max_waiting_time: int = 60):
+        """
+        f3dasm adapter for the Abaqus simulator
+
+        Parameters
+        ----------
+        py_file : str
+            Path to the Python file containing the simulation function.
+        function_name : str
+            Name of the simulation function.
+        post_py_file : str
+            Path to the Python file containing the post-processing function.
+        num_cpus : int
+            Number of CPUs to use for the simulation.
+        delete_odb : bool
+            Delete the ODB file after the simulation.
+        delete_temp_files : bool
+            Delete temporary files after the simulation.
+        working_directory : str
+            Working directory where the simulation will be executed.
+        max_waiting_time : int
+            Maximum waiting time for the simulation to finish.
+        """
 
         self.simulator = AbaqusSimulator(
             num_cpus=num_cpus, delete_odb=delete_odb,

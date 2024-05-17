@@ -25,8 +25,8 @@ for path in src_dir:
 project = 'abaqus2py'
 author = 'Martin van der Schelling'
 copyright = '2024, Bessa Research Group'
-version = '0.0.1'
-release = '0.0.1'
+version = '1.0.0'
+release = '1.0.0'
 
 # -- General configuration ----------------------------------------------------
 

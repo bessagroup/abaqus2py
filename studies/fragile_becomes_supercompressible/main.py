@@ -21,14 +21,17 @@ process
 # Standard
 from pathlib import Path
 from time import sleep
+from typing import Optional
 
 # Third-party
 import hydra
 import numpy as np
+import pandas as pd
 from f3dasm import ExperimentData
 from f3dasm import logger as f3dasm_logger
+from f3dasm.design import Domain
 
-from abaqus2py._src.f3dasm_adapter import F3DASMAbaqusSimulator
+from abaqus2py import F3DASMAbaqusSimulator
 
 #                                                          Authorship & Credits
 # =============================================================================
@@ -40,17 +43,54 @@ __status__ = 'Stable'
 # =============================================================================
 
 
+#                                                         Custom sampler method
+# =============================================================================
+
+def log_normal_sampler(domain: Domain, n_samples: int,
+                       mean: float, sigma: float, seed: Optional[int] = None):
+    """Sampler function for lognormal distribution
+
+    Parameters
+    ----------
+    domain
+        Domain object
+    n_samples
+        Number of samples to generate
+    mean
+        Mean of the lognormal distribution
+    sigma
+        Standard deviation of the lognormal distribution
+    seed
+        Seed for the random number generator
+
+    Returns
+    -------
+    DataFrame
+        pandas DataFrame with the samples
+    """
+    rng = np.random.default_rng(seed)
+    sampled_imperfections = rng.lognormal(
+        mean=mean, sigma=sigma, size=n_samples)
+    return pd.DataFrame(sampled_imperfections, columns=domain.names)
+
+# =============================================================================
+
+
 def pre_processing(config):
     experimentdata = ExperimentData.from_yaml(config.experimentdata)
 
     if 'from_sampling' in config.imperfection:
-        # lognormal distribution
-        sampled_imperfections = np.random.lognormal(
-            config.imperfection.mean, config.imperfection.std, len(
-                experimentdata))
-        i = experimentdata._input_data.columns.iloc('imperfection')
-        experimentdata._input_data.data[i] = sampled_imperfections.reshape(
-            -1, 1)
+        domain_imperfections = Domain.from_yaml(config.imperfection.domain)
+
+        imperfections = ExperimentData.from_sampling(
+            sampler=log_normal_sampler,
+            domain=domain_imperfections,
+            n_samples=config.experimentdata.from_sampling.n_samples,
+            mean=config.imperfection.mean,
+            sigma=config.imperfection.sigma,
+            seed=config.experimentdata.from_sampling.seed)
+
+        experimentdata = experimentdata.join(imperfections)
 
     experimentdata.store(Path.cwd())
 
@@ -102,7 +142,7 @@ def process(config):
         py_file=config.scripts.riks_pre,
         post_py_file=config.scripts.riks_post,
         working_directory=Path.cwd() / 'riks',
-        max_waiting_time=70)
+        max_waiting_time=120)
 
     data.evaluate(data_generator=simulator_lin_buckle, mode=config.mode)
 
@@ -139,7 +179,7 @@ def main(config):
         post_processing(config)
 
     else:
-        sleep(3*config.hpc.jobid)  # Just to asynchronize the jobs
+        sleep(3*config.hpc.jobid)  # To asynchronize the jobs
         process(config)
 
 

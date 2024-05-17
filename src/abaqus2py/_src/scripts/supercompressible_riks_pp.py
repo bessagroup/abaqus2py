@@ -54,6 +54,7 @@ def main(odb):
     variable = 'E'
     values = []
     for frame in frames:
+    	print(frame.fieldOutputs.keys())
         varFieldOutputs = frame.fieldOutputs[variable]
         outputs = varFieldOutputs.getSubset(region=nodeSet).values
         output_frame = []

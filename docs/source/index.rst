@@ -1,12 +1,12 @@
 abaqus2py
 =========
 
-.. toctree::
-   :maxdepth: 3
-   :caption: API Documentation
-   :hidden:
+.. .. toctree::
+..    :maxdepth: 3
+..    :caption: API Documentation
+..    :hidden:
        
-   rst_doc_files/example
+..    rst_doc_files/example
 
 .. toctree::
    :name: apitoc

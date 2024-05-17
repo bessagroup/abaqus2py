@@ -5,22 +5,17 @@ the Bessa Group's conventions
 This package contains a template for Python packages following
 the Bessa Group's conventions.
 
-Usage:
-  import abaqus2py
-
-Author: Jiaxiang Yi (J.Yi@tudelft.nl) and
-Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)
+Authors:
+- Jiaxiang Yi (J.Yi@tudelft.nl)
+- Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)
 """
 
 #                                                                       Modules
 # =============================================================================
 
-# Standard
-
-# Third-party
-
 # Local
 from ._src.abaqus_simulator import AbaqusSimulator
+from ._src.f3dasm_adapter import F3DASMAbaqusSimulator
 
 #                                                        Authorship and Credits
 # =============================================================================

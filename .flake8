@@ -11,6 +11,9 @@
 extend-exclude =
   docs/
   tests/
+  studies/
+  src/abaqus2py/_src/scripts/
+  notebooks/
 
 # <<< UPDATE ACCORDING WITH YOUR PYTHON PROJECT
 
