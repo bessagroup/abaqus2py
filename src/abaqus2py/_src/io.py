@@ -24,7 +24,6 @@ __status__ = "Alpha"
 # =============================================================================
 
 FILENAME_PREPROCESS = "preprocess"
-FILENAME_SUBMIT = "execute"
 FILENAME_POSTPROCESS = "post"
 FILENAME_SIMINFO = "sim_info"
 DEFAULT_JOBNAME = "simulation"
