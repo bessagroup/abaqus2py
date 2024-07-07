@@ -46,6 +46,8 @@ def write_sim_info(sim_info: dict, working_dir: Path) -> None:
     with open(filename, "wb") as fp:
         pickle.dump(sim_info, fp, protocol=0)
 
+    # check if this file exists
+
 
 def create_preprocess_script(
         working_dir: Path, python_file: Path, function_name: str):
@@ -76,6 +78,8 @@ def create_preprocess_script(
         f.write("    dict = pickle.load(f)\n")
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(f"{function_name}(dict)\n")
+
+    # check if this file exists
 
 
 def create_postprocess_script(
@@ -110,6 +114,8 @@ def create_postprocess_script(
                 f"name=r'{odb_file.with_suffix('.odb')}')\n"))
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(f"{function_name}(odb)\n")
+
+    # check if this file exists
 
 
 def remove_temporary_files(
@@ -152,6 +158,8 @@ def wait_until_text_verification(
         max_waiting_time: int) -> None:
     # workaround
     # sleep(max_waiting_time)
+
+
     start_time = time()
     logger.debug(f"Start time: {start_time}")
     success = False

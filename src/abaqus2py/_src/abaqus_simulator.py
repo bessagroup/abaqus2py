@@ -225,18 +225,22 @@ class AbaqusSimulator:
             if submit_job:
                 self._submit(inp_file=inp_file)
 
-            wait_until_text_verification(
-                working_dir=self.working_directory / str(name),
-                file_extension=".log",
-                text="Begin Analysis Input File Processor",
-                max_waiting_time=self.max_waiting_time)
+            if os.path.exists(self.working_directory / str(name)):
+                wait_until_text_verification(
+                    working_dir=self.working_directory / str(name),
+                    file_extension=".log",
+                    text="Begin Analysis Input File Processor",
+                    max_waiting_time=self.max_waiting_time)
 
             # Workaround to wait for the job to finish
-            wait_until_text_verification(
-                working_dir=self.working_directory / str(name),
-                file_extension=".msg",
-                text="JOB TIME SUMMARY",
-                max_waiting_time=self.max_waiting_time)
+                wait_until_text_verification(
+                    working_dir=self.working_directory / str(name),
+                    file_extension=".msg",
+                    text="JOB TIME SUMMARY",
+                    max_waiting_time=self.max_waiting_time)
+                
+            else:
+                raise FileExistsError("Working directory is not properly set up")
 
             if post_py_file is not None:
                 self._postprocess(
@@ -266,7 +270,11 @@ class AbaqusSimulator:
         os.chdir(inp_file.parent)
 
         # Submit the simulation
-        abaqus_submit(inp_file=inp_file.stem, num_cpus=self.num_cpus)
+        if os.path.exists(self.working_directory / str(inp_file)):
+            abaqus_submit(inp_file=inp_file.stem, num_cpus=self.num_cpus)
+
+        else:
+            raise FileExistsError("inp file not found")
 
         # Change back to the original working directory
         os.chdir(cwd)
@@ -302,16 +310,27 @@ class AbaqusSimulator:
         logger.debug(f"Preprocessing started with {py_file} in {working_dir}")
 
         # Check if the working directory exists, if not create it
-        working_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            working_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            raise "The working directory does not exist and you don't have the permissions to create this directory. Please ensure you get the correct permission"
+        except OSError:
+            raise "OS error occured. Please check and try again"
 
         # Write a pickle file with the simulation parameters
         write_sim_info(sim_info=simulation_parameters,
                        working_dir=working_dir)
+        
+        if not os.path.exists(working_dir / Path(FILENAME_SIMINFO).with_suffix('.pkl')):
+            raise FileExistsError("Pickle file not successfully saved")
 
         # Create the preprocessing script
-        create_preprocess_script(
-            working_dir=working_dir,
-            python_file=py_file, function_name=function_name)
+        if os.path.exists(working_dir) and os.path.exists(py_file):
+            create_preprocess_script(
+                working_dir=working_dir,
+                python_file=py_file, function_name=function_name)
+        else:
+            raise FileExistsError("Python File or working dirctory not exist")
 
         # Run abaqus
         abaqus_call(working_dir / FILENAME_PREPROCESS)
@@ -326,11 +345,12 @@ class AbaqusSimulator:
 
         # Search the subdirectory for the .inp file and return the path
         try:
-            return working_dir.glob("*.inp").__next__()
+            inp_file = next(working_dir.glob("*.inp"))
         except StopIteration:
-            raise FileNotFoundError((
-                f"No .inp file created in the "
-                f"working directory: {working_dir}"))
+            raise FileNotFoundError(
+                f"No .inp file found in the working directory: {working_dir}"
+            )
+        return inp_file
 
     def _postprocess(
             self, python_file: Path, function_name: str, odb_file: Path
@@ -353,9 +373,12 @@ class AbaqusSimulator:
             f"Postprocessing started with {python_file} for {odb_file}")
 
         # Create the postprocessing script
-        create_postprocess_script(working_dir=odb_file.parent,
-                                  python_file=python_file, odb_file=odb_file,
-                                  function_name=function_name)
+        if os.path.exists(odb_file) and os.path.exists(python_file):
+            create_postprocess_script(working_dir=odb_file.parent,
+                                    python_file=python_file, odb_file=odb_file,
+                                    function_name=function_name)
+        else:
+            raise FileExistsError("Python File or odb_file not exist")
 
         abaqus_call(odb_file.parent / FILENAME_POSTPROCESS)
 
