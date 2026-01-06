@@ -19,9 +19,11 @@ from ._src.f3dasm_adapter import F3DASMAbaqusSimulator
 
 #                                                        Authorship and Credits
 # =============================================================================
-__author__ = 'Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)'
-__credits__ = ['Martin van der Schelling', 'Jiaxiang Yi']
-__status__ = 'Stable'
+__author__ = "Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)"
+__credits__ = ["Martin van der Schelling", "Jiaxiang Yi"]
+__status__ = "Stable"
 # =============================================================================
 #
 # =============================================================================
+
+__all__ = ["AbaqusSimulator", "F3DASMAbaqusSimulator"]

@@ -8,16 +8,24 @@ Abaqus Simulator
 # Standard
 from __future__ import annotations
 
+import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Optional
 
 # Local
-from ._logger import logger
-from .io import (DEFAULT_JOBNAME, FILENAME_POSTPROCESS, FILENAME_PREPROCESS,
-                 FILENAME_SIMINFO, create_postprocess_script,
-                 create_preprocess_script, remove_temporary_files,
-                 wait_until_text_verification, write_sim_info)
+from .io import (
+    DEFAULT_JOBNAME,
+    FILENAME_POSTPROCESS,
+    FILENAME_PREPROCESS,
+    FILENAME_SIMINFO,
+    create_postprocess_script,
+    create_preprocess_script,
+    remove_temporary_files,
+    wait_until_text_verification,
+    write_sim_info,
+)
 
 #                                                          Authorship & Credits
 # =============================================================================
@@ -27,6 +35,8 @@ __status__ = "Alpha"
 # =============================================================================
 #
 # =============================================================================
+
+logger = logging.getLogger("abaqus2py")
 
 
 def abaqus_call(script: Path) -> None:
@@ -56,11 +66,14 @@ def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
 
 
 class AbaqusSimulator:
-    def __init__(self, num_cpus: int = 1,
-                 delete_odb: bool = False,
-                 delete_temp_files: bool = False,
-                 working_directory: Optional[str | Path] = None,
-                 max_waiting_time: int = 60):
+    def __init__(
+        self,
+        num_cpus: int = 1,
+        delete_odb: bool = False,
+        delete_temp_files: bool = False,
+        working_directory: Optional[str | Path] = None,
+        max_waiting_time: int = 60,
+    ):
         """
         Abaqus simulator class
 
@@ -94,13 +107,16 @@ class AbaqusSimulator:
         else:
             self.working_directory = Path(working_directory)
 
-#                                                                Public methods
-# =============================================================================
+    #                                                            Public methods
+    # =========================================================================
 
     def preprocess(
-            self, py_file: str, function_name: str = "main",
-            simulation_parameters: Iterable[
-                Dict[str, Any]] | Dict[str, Any] = None):
+        self,
+        py_file: str,
+        function_name: str = "main",
+        simulation_parameters: Iterable[dict[str, Any]]
+        | dict[str, Any] = None,
+    ):
         """
         Create the input files (.inp) for the simulation with a
         preprocessing script
@@ -124,7 +140,6 @@ class AbaqusSimulator:
 
         # Loop over the simulation parameters
         for index, sim_params in enumerate(simulation_parameters):
-
             # Check if there is a key 'name' in the dictionary
             if "name" in sim_params:
                 name = sim_params["name"]
@@ -136,7 +151,8 @@ class AbaqusSimulator:
                 py_file=Path(py_file),
                 working_dir=self.working_directory / str(name),
                 function_name=function_name,
-                **sim_params)
+                **sim_params,
+            )
 
     def submit(self, inp_files: Iterable[str] | str) -> None:
         """
@@ -153,8 +169,12 @@ class AbaqusSimulator:
         for inp_file in inp_files:
             self._submit(inp_file=Path(inp_file))
 
-    def postprocess(self, py_file: str, odb_files: Iterable[str] | str,
-                    function_name: str = "main") -> None:
+    def postprocess(
+        self,
+        py_file: str,
+        odb_files: Iterable[str] | str,
+        function_name: str = "main",
+    ) -> None:
         """
         Run a postprocessing procedure; where the odb file is read and the
         results are processed
@@ -172,16 +192,21 @@ class AbaqusSimulator:
             odb_files = [odb_files]
 
         for odb_file in odb_files:
-            self._postprocess(python_file=Path(py_file),
-                              odb_file=Path(odb_file).with_suffix(".odb"),
-                              function_name=function_name)
+            self._postprocess(
+                python_file=Path(py_file),
+                odb_file=Path(odb_file).with_suffix(".odb"),
+                function_name=function_name,
+            )
 
     def run(
-            self, py_file: str, function_name: str = "main",
-            post_py_file: Optional[str] = None,
-            simulation_parameters: Iterable[Dict[str, Any]] | Dict[str, Any]
-            = None,
-            submit_job: bool = True):
+        self,
+        py_file: str,
+        function_name: str = "main",
+        post_py_file: Optional[str] = None,
+        simulation_parameters: Iterable[dict[str, Any]]
+        | dict[str, Any] = None,
+        submit_job: bool = True,
+    ):
         """
         Run the full simulation process
 
@@ -208,7 +233,6 @@ class AbaqusSimulator:
 
         # If an iterable; loop over the simulation parameters
         for index, sim_params in enumerate(simulation_parameters):
-
             # Check if there is a key 'name' in the dictionary
             if "name" in sim_params:
                 name = sim_params["name"]
@@ -220,7 +244,8 @@ class AbaqusSimulator:
                 py_file=Path(py_file),
                 working_dir=self.working_directory / str(name),
                 function_name=function_name,
-                **sim_params)
+                **sim_params,
+            )
 
             if submit_job:
                 self._submit(inp_file=inp_file)
@@ -229,23 +254,26 @@ class AbaqusSimulator:
                 working_dir=self.working_directory / str(name),
                 file_extension=".log",
                 text="Begin Analysis Input File Processor",
-                max_waiting_time=self.max_waiting_time)
+                max_waiting_time=self.max_waiting_time,
+            )
 
             # Workaround to wait for the job to finish
             wait_until_text_verification(
                 working_dir=self.working_directory / str(name),
                 file_extension=".msg",
                 text="JOB TIME SUMMARY",
-                max_waiting_time=self.max_waiting_time)
+                max_waiting_time=self.max_waiting_time,
+            )
 
             if post_py_file is not None:
                 self._postprocess(
                     python_file=Path(post_py_file),
                     function_name=function_name,
-                    odb_file=inp_file.with_suffix('.odb'))
+                    odb_file=inp_file.with_suffix(".odb"),
+                )
 
-#                                                               Private methods
-# =============================================================================
+    #                                                           Private methods
+    # =========================================================================
 
     def _submit(self, inp_file: Path) -> None:
         """
@@ -276,9 +304,13 @@ class AbaqusSimulator:
         if self.delete_temp_files:
             remove_temporary_files(directory=inp_file.parent)
 
-    def _preprocess(self, py_file: Path, working_dir: Path,
-                    function_name: str,
-                    **simulation_parameters) -> Path:
+    def _preprocess(
+        self,
+        py_file: Path,
+        working_dir: Path,
+        function_name: str,
+        **simulation_parameters,
+    ) -> Path:
         """
         Create the input files for the simulation with a preprocessing script
 
@@ -305,22 +337,25 @@ class AbaqusSimulator:
         working_dir.mkdir(parents=True, exist_ok=True)
 
         # Write a pickle file with the simulation parameters
-        write_sim_info(sim_info=simulation_parameters,
-                       working_dir=working_dir)
+        write_sim_info(sim_info=simulation_parameters, working_dir=working_dir)
 
         # Create the preprocessing script
         create_preprocess_script(
             working_dir=working_dir,
-            python_file=py_file, function_name=function_name)
+            python_file=py_file,
+            function_name=function_name,
+        )
 
         # Run abaqus
         abaqus_call(working_dir / FILENAME_PREPROCESS)
 
         if self.delete_temp_files:
             (working_dir / FILENAME_PREPROCESS).with_suffix(".py").unlink(
-                missing_ok=True)
+                missing_ok=True
+            )
             (working_dir / FILENAME_SIMINFO).with_suffix(".pkl").unlink(
-                missing_ok=True)
+                missing_ok=True
+            )
 
         logger.debug(f"Preprocessing finished with {py_file} in {working_dir}")
 
@@ -328,12 +363,12 @@ class AbaqusSimulator:
         try:
             return working_dir.glob("*.inp").__next__()
         except StopIteration:
-            raise FileNotFoundError((
-                f"No .inp file created in the "
-                f"working directory: {working_dir}"))
+            raise FileNotFoundError(
+                f"No .inp file created in the working directory: {working_dir}"
+            ) from None
 
     def _postprocess(
-            self, python_file: Path, function_name: str, odb_file: Path
+        self, python_file: Path, function_name: str, odb_file: Path
     ) -> None:
         """
         Run a postprocessing procedure; where the odb file is read and the
@@ -350,21 +385,27 @@ class AbaqusSimulator:
         """
 
         logger.debug(
-            f"Postprocessing started with {python_file} for {odb_file}")
+            f"Postprocessing started with {python_file} for {odb_file}"
+        )
 
         # Create the postprocessing script
-        create_postprocess_script(working_dir=odb_file.parent,
-                                  python_file=python_file, odb_file=odb_file,
-                                  function_name=function_name)
+        create_postprocess_script(
+            working_dir=odb_file.parent,
+            python_file=python_file,
+            odb_file=odb_file,
+            function_name=function_name,
+        )
 
         abaqus_call(odb_file.parent / FILENAME_POSTPROCESS)
 
         if self.delete_temp_files:
-            (odb_file.parent / FILENAME_POSTPROCESS).with_suffix('.py').unlink(
-                missing_ok=True)
+            (odb_file.parent / FILENAME_POSTPROCESS).with_suffix(".py").unlink(
+                missing_ok=True
+            )
 
         if self.delete_odb:
             odb_file.unlink(missing_ok=True)
 
         logger.debug(
-            f"Postprocessing finished with {python_file} for {odb_file}")
+            f"Postprocessing finished with {python_file} for {odb_file}"
+        )

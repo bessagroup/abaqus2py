@@ -1,5 +1,3 @@
-
-
 """
 Main entrypoint of the experiment
 
@@ -35,9 +33,9 @@ from abaqus2py import F3DASMAbaqusSimulator
 
 #                                                          Authorship & Credits
 # =============================================================================
-__author__ = 'Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)'
-__credits__ = ['Martin van der Schelling']
-__status__ = 'Stable'
+__author__ = "Martin van der Schelling (M.P.vanderSchelling@tudelft.nl)"
+__credits__ = ["Martin van der Schelling"]
+__status__ = "Stable"
 # =============================================================================
 #
 # =============================================================================
@@ -46,8 +44,14 @@ __status__ = 'Stable'
 #                                                         Custom sampler method
 # =============================================================================
 
-def log_normal_sampler(domain: Domain, n_samples: int,
-                       mean: float, sigma: float, seed: Optional[int] = None):
+
+def log_normal_sampler(
+    domain: Domain,
+    n_samples: int,
+    mean: float,
+    sigma: float,
+    seed: Optional[int] = None,
+):
     """Sampler function for lognormal distribution
 
     Parameters
@@ -70,8 +74,10 @@ def log_normal_sampler(domain: Domain, n_samples: int,
     """
     rng = np.random.default_rng(seed)
     sampled_imperfections = rng.lognormal(
-        mean=mean, sigma=sigma, size=n_samples)
+        mean=mean, sigma=sigma, size=n_samples
+    )
     return pd.DataFrame(sampled_imperfections, columns=domain.names)
+
 
 # =============================================================================
 
@@ -79,7 +85,7 @@ def log_normal_sampler(domain: Domain, n_samples: int,
 def pre_processing(config):
     experimentdata = ExperimentData.from_yaml(config.experimentdata)
 
-    if 'from_sampling' in config.imperfection:
+    if "from_sampling" in config.imperfection:
         domain_imperfections = Domain.from_yaml(config.imperfection.domain)
 
         imperfections = ExperimentData.from_sampling(
@@ -88,19 +94,19 @@ def pre_processing(config):
             n_samples=config.experimentdata.from_sampling.n_samples,
             mean=config.imperfection.mean,
             sigma=config.imperfection.sigma,
-            seed=config.experimentdata.from_sampling.seed)
+            seed=config.experimentdata.from_sampling.seed,
+        )
 
         experimentdata = experimentdata.join(imperfections)
 
     experimentdata.store(Path.cwd())
 
     # Create directories for ABAQUS results
-    (Path.cwd() / 'lin_buckle').mkdir(exist_ok=True)
-    (Path.cwd() / 'riks').mkdir(exist_ok=True)
+    (Path.cwd() / "lin_buckle").mkdir(exist_ok=True)
+    (Path.cwd() / "riks").mkdir(exist_ok=True)
 
 
-def post_processing(config):
-    ...
+def post_processing(config): ...
 
 
 def process(config):
@@ -130,29 +136,32 @@ def process(config):
             sleep(10)
 
     if tries == max_tries:
-        raise FileNotFoundError(f"Could not open ExperimentData after "
-                                f"{max_tries} attempts.")
+        raise FileNotFoundError(
+            f"Could not open ExperimentData after {max_tries} attempts."
+        )
 
     simulator_lin_buckle = F3DASMAbaqusSimulator(
         py_file=config.scripts.lin_buckle_pre,
         post_py_file=config.scripts.lin_buckle_post,
-        working_directory=Path.cwd() / 'lin_buckle',
-        max_waiting_time=60)
+        working_directory=Path.cwd() / "lin_buckle",
+        max_waiting_time=60,
+    )
     simulator_riks = F3DASMAbaqusSimulator(
         py_file=config.scripts.riks_pre,
         post_py_file=config.scripts.riks_post,
-        working_directory=Path.cwd() / 'riks',
-        max_waiting_time=120)
+        working_directory=Path.cwd() / "riks",
+        max_waiting_time=120,
+    )
 
     data.evaluate(data_generator=simulator_lin_buckle, mode=config.mode)
 
     data.store()
 
-    data.mark_all('open')
+    data.mark_all("open")
 
     data.evaluate(data_generator=simulator_riks, mode=config.mode)
 
-    if config.mode == 'sequential':
+    if config.mode == "sequential":
         # Store the ExperimentData to a csv file
         data.store()
 
@@ -179,7 +188,7 @@ def main(config):
         post_processing(config)
 
     else:
-        sleep(3*config.hpc.jobid)  # To asynchronize the jobs
+        sleep(3 * config.hpc.jobid)  # To asynchronize the jobs
         process(config)
 
 

@@ -1,23 +1,35 @@
-.DEFAULT_GOAL := help
+# Makefile for Python project using uv, pytest, and mkdocs
 
-PACKAGEDIR := dist
+# Default goal
+.DEFAULT_GOAL := test
 
-.PHONY: help init init-dev test test-smoke test-smoke-html test-html build upload upload-testpypi
+# Variables
+PYTEST_CMD = uv run --no-sync pytest
+MKDOCS_CMD = uv run --no-sync mkdocs serve
 
-help:
-	@echo "Please use \`make <target>' where <target> is one of:"
-	@echo "  build               Build the package"
-	@echo "  upload              Upload the package to the PyPi index"
-	@echo "  upload-testpypi     Upload the package to the PyPi-test index"
+# Run tests
+test:
+	@echo "Running tests with pytest..."
+	@$(PYTEST_CMD)
 
-build:
-	-rm -rf $(PACKAGEDIR)/*
-	python -m build
+# Run documentation server
+docs:
+	@echo "Starting MkDocs development server..."
+	@$(MKDOCS_CMD)
 
-upload-testpypi:
-	$(MAKE) build
-	twine upload -r testpypi $(PACKAGEDIR)/* --verbose
+# Run linter
+lint:
+	@echo "Running Ruff linter..."
+	@uv run --no-sync ruff check .
 
-upload:
-	$(MAKE) build
-	twine upload $(PACKAGEDIR)/* --verbose
+# Format code
+format:
+	@echo "Formatting code with Ruff..."
+	@uv run --no-sync ruff format .
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning up..."
+	@rm -rf __pycache__ .pytest_cache .ruff_cache build dist site *.egg-info
+
+.PHONY: test docs lint format clean
