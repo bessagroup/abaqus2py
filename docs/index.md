@@ -1,8 +1,10 @@
-# BBOB Benchmark set for JAX
+# abaqus2py
 
-[View on GitHub](https://github.com/bessagroup/abaqus2py)
+[![GitHub license](https://img.shields.io/badge/license-BSD-blue)](https://github.com/bessagroup/abaqus2py)
 
-JAX implementation of the BBOB Benchmark functions for black-box optimization, based on the original definitions by Finck et al. (2009) [^1].
+[**Docs**](https://bessagroup.github.io/abaqus2py/)
+| [**GitHub**](https://github.com/bessagroup/abaqus2py)
+| [**PyPI**](https://pypi.org/project/abaqus2py/)
 
 **First publication:** March 15, 2024
 
@@ -10,74 +12,43 @@ JAX implementation of the BBOB Benchmark functions for black-box optimization, b
 
 ## Summary
 
-This repository provides the original BBOB 24 noise-free, real-parameter, single-objective benchmark functions reimplemented in JAX. Originally written in C, these functions have been translated to JAX to enable automatic differentiation, just-in-time (JIT) compilation, and XLA-accelerated performance; making them ideal for research in optimization, machine learning, and evolutionary algorithms.
+This repository serves as a port for running ABAQUS simulations throughout Python function calls.
 
 ## Statement of need
 
-This repository provides the original BBOB 24 noise-free, real-parameter, single-objective benchmark functions reimplemented in JAX. Originally written in C, these functions have been translated to JAX to enable automatic differentiation, just-in-time (JIT) compilation, and XLA-accelerated performance — making them ideal for research in optimization, machine learning, and evolutionary algorithms.
-
-<div align="center">
-  <img src="img/bbob_functions_overview_3d.png" alt="BBOB functions 3D overview" width="80%">
-  <br>
-  <em>3D surface plots of the 24 BBOB benchmark functions.</em>
-  <br><br>
-  <img src="img/bbob_functions_overview_2d.png" alt="BBOB functions 2D overview" width="80%">
-  <br>
-  <em>2D contour plots of the 24 BBOB benchmark functions.</em>
-</div>
-
+...
 
 ## Authorship
 
 **Authors**:
-- Martin van der Schelling ([m.p.vanderschelling@tudelft.nl](mailto:m.p.vanderschelling@tudelft.nl))
+- Jiaxiang Yi ([J.Yi@tudelft.nl](mailto:J.Yi@tudelft.nl))
+- Martin van der Schelling ([M.P.vanderSchelling@tudelft.nl](mailto:M.P.vanderSchelling@tudelft.nl))
 
-**Authors affiliation:**
-- Delft University of Technology (Bessa Research Group)
+**Authors afilliation:**
+- Bessa Research Group @ Delft University of Technology
 
-**Maintainer:**
-- Martin van der Schelling ([m.p.vanderschelling@tudelft.nl](mailto:m.p.vanderschelling@tudelft.nl))
+**Maintainers:**
+- Martin van der Schelling ([M.P.vanderSchelling@tudelft.nl](mailto:M.P.vanderSchelling@tudelft.nl))
 
-**Maintainer affiliation:**
-- Delft University of Technology (Bessa Research Group)
+**Maintainers afilliation:**
+- Bessa Research Group @ Delft University of Technology
 
 
 ## Getting started
 
-To install the package, use pip:
-
-```bash
-pip install bbob-jax
-```
-
-After installation, see the full guide: [Getting Started](usage.ipynb).
-
-## Related Work
-
-This project builds on and complements established benchmarking efforts and tooling in black-box optimization. The resources below are closely related and provide broader context and utilities.
-
-- [COCO platform (COmparing Continuous Optimisers)](https://coco-platform.org/): benchmarking framework and tools for black-box optimization. [^2]
-- [EvoSax](https://github.com/RobertTLange/evosax): JAX-based evolution strategies library that includes BBOB function support and benchmarking utilities. [^3]
+- You can find the installation instructions in the [Installation Guide](installation.md).
+- After installation, start by looking at the [Getting Started Guide](usage.ipynb).
 
 ## Community Support
 
-If you find any **issues, bugs or problems** with this package, please use the [GitHub issue tracker](https://github.com/bessagroup/bbob-jax/issues) to report them.
-
-## Citation
-
---8<-- ".citation.md"
+* If you find any **issues, bugs or problems** within this repository, please use the [GitHub issue tracker](https://github.com/bessagroup/abaqus2py/issues) to report them.
+* If you have **questions, feature requests or ideas** for this project, please use the [GitHub Discussions](https://github.com/bessagroup/abaqus2py/discussions)
 
 ## License
 
-Copyright (c) 2025, Martin van der Schelling
+Copyright 2026, Bessa Research Group
 
 All rights reserved.
 
-This project is licensed under the BSD 3-Clause License. See [LICENSE](https://github.com/bessagroup/bbob-jax/blob/main/LICENSE) for the full license text.
-
-[^1]: Finck, S., Hansen, N., Ros, R., and Auger, A. (2009), [Real-parameter black-box optimization benchmarking 2009: Noiseless functions definitions](https://inria.hal.science/inria-00362633v2/document), INRIA.
-
-[^2]: Hansen, N., Auger, A., Ros, R., Mersmann, O., Tušar, T., and Brockhoff, D. (2021), COCO: A Platform for Comparing Continuous Optimizers in a Black-Box Setting. Optimization Methods and Software, 36(1), 114–144. https://doi.org/10.1080/10556788.2020.1808977
-
-[^3]: Lange, R. T. (2022), evosax: JAX-based Evolution Strategies. arXiv preprint [arXiv:2212.04180](https://arxiv.org/abs/2212.04180).
+This project is licensed under the BSD 3-Clause License. See [LICENSE](license.md) for the full license text.
 
