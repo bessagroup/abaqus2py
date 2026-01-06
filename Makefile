@@ -1,35 +1,25 @@
-# Makefile for Python project using uv, pytest, and mkdocs
+.PHONY: help build test lint format docs
 
-# Default goal
-.DEFAULT_GOAL := test
+# Default target
+help:
+	@echo "Available targets:"
+	@echo "  build        - Build the package distribution"
+	@echo "  test         - Run tests"
+	@echo "  lint         - Lint code"
+	@echo "  docs         - Build documentation"
 
-# Variables
-PYTEST_CMD = uv run --no-sync pytest
-MKDOCS_CMD = uv run --no-sync mkdocs serve
+# Build targets
+build:
+	python -m build
 
-# Run tests
+# Testing targets
 test:
-	@echo "Running tests with pytest..."
-	@$(PYTEST_CMD)
+	pytest
 
-# Run documentation server
-docs:
-	@echo "Starting MkDocs development server..."
-	@$(MKDOCS_CMD)
-
-# Run linter
+# Linting and formatting targets
 lint:
-	@echo "Running Ruff linter..."
-	@uv run --no-sync ruff check .
+	ruff check
 
-# Format code
-format:
-	@echo "Formatting code with Ruff..."
-	@uv run --no-sync ruff format .
-
-# Clean build artifacts
-clean:
-	@echo "Cleaning up..."
-	@rm -rf __pycache__ .pytest_cache .ruff_cache build dist site *.egg-info
-
-.PHONY: test docs lint format clean
+# Documentation targets
+docs:
+	mkdocs build

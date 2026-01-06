@@ -10,10 +10,7 @@ import pickle
 from typing import Any, Optional
 
 # Third-party
-try:
-    from f3dasm import DataGenerator
-except ImportError:
-    DataGenerator = object
+from f3dasm import DataGenerator, ExperimentSample
 
 # Local
 from .abaqus_simulator import AbaqusSimulator
@@ -75,7 +72,7 @@ class F3DASMAbaqusSimulator(DataGenerator):
         self.function_name = function_name
         self.post_py_file = post_py_file
 
-    def execute(self, experiment_sample, **kwargs):
+    def execute(self, experiment_sample: ExperimentSample, **kwargs):
         sim_parameters = experiment_sample.to_dict()
         sim_parameters["name"] = str(sim_parameters["job_number"])
         sim_parameters.update(kwargs)

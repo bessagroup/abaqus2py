@@ -15,6 +15,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Mathematics"
 ]
 dependencies = [
+  "f3dasm>=2.2.1"
 ]
 description = "Abaqus to Python interface"
 keywords = ["abaqus", "python", "interface"]
