@@ -194,6 +194,7 @@ class AbaqusSimulator:
         for odb_file in odb_files:
             _postprocess(
                 delete_temp_files=self.delete_temp_files,
+                delete_odb=self.delete_odb,
                 python_file=Path(py_file),
                 odb_file=Path(odb_file).with_suffix(".odb"),
                 function_name=function_name,
@@ -274,6 +275,7 @@ class AbaqusSimulator:
             if post_py_file is not None:
                 _postprocess(
                     delete_temp_files=self.delete_temp_files,
+                    delete_odb=self.delete_odb,
                     python_file=Path(post_py_file),
                     function_name=function_name,
                     odb_file=inp_file.with_suffix(".odb"),

@@ -10,6 +10,7 @@ import logging
 import pickle
 from pathlib import Path
 from time import sleep, time
+from typing import Optional
 
 # Local
 
@@ -64,19 +65,17 @@ def create_preprocess_script(
     function_name : str
         Name of the preprocess function.
     """
-    with open(
-        f"{working_dir / Path(FILENAME_PREPROCESS).with_suffix('.py')}", "w"
-    ) as f:
+    preprocess_path = working_dir / Path(FILENAME_PREPROCESS).with_suffix(
+        ".py"
+    )
+    siminfo_path = working_dir / Path(FILENAME_SIMINFO).with_suffix(".pkl")
+    with open(preprocess_path, "w") as f:
         f.write("import os\n")
         f.write("import sys\n")
         f.write("import pickle\n")
         f.write(f"sys.path.extend([r'{python_file.parent}'])\n")
         f.write(f"from {python_file.stem} import {function_name}\n")
-        f.write(
-            f"with open(r'{
-                working_dir / Path(FILENAME_SIMINFO).with_suffix('.pkl')
-            }', 'rb') as f:\n"
-        )  # NOQA
+        f.write(f"with open(r'{siminfo_path}', 'rb') as f:\n")
         f.write("    dict = pickle.load(f)\n")
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(f"{function_name}(dict)\n")
@@ -100,24 +99,24 @@ def create_postprocess_script(
         Name of the postprocess function.
     """
 
-    with open(
-        f"{working_dir / Path(FILENAME_POSTPROCESS).with_suffix('.py')}", "w"
-    ) as f:
+    postprocess_path = working_dir / Path(FILENAME_POSTPROCESS).with_suffix(
+        ".py"
+    )
+    odb_path = odb_file.with_suffix(".odb")
+    with open(postprocess_path, "w") as f:
         f.write("import os\n")
         f.write("import sys\n")
         f.write("from abaqus import session\n")
         f.write(f"sys.path.extend([r'{python_file.parent}'])\n")
         f.write(f"from {python_file.stem} import {function_name}\n")
-        f.write(
-            f"odb = session.openOdb(name=r'{odb_file.with_suffix('.odb')}')\n"
-        )
+        f.write(f"odb = session.openOdb(name=r'{odb_path}')\n")
         f.write(f"os.chdir(r'{working_dir}')\n")
         f.write(f"{function_name}(odb)\n")
 
 
 def remove_temporary_files(
     directory: Path,
-    file_types: list[str] = None,
+    file_types: Optional[list[str]] = None,
 ) -> None:
     """Remove files of specified types in a directory.
 
@@ -125,10 +124,11 @@ def remove_temporary_files(
     ----------
     directory : Path
         Target folder.
-    file_types : list
-        List of file extensions to be removed, default is a list of Abaqus
-        temporary files (.log, .lck, .SMABulk, .rec, .SMAFocus, .exception,
-        .simlog, .023, .exception)
+    file_types : list of str, optional
+        List of file extensions to be removed. If None, a default list of
+        Abaqus temporary-file extensions is used (``.log``, ``.lck``,
+        ``.SMABulk``, ``.rec``, ``.SMAFocus``, ``.exception``, ``.simlog``,
+        ``.023``).
 
     Notes
     -----
@@ -146,7 +146,6 @@ def remove_temporary_files(
             ".exception",
             ".simlog",
             ".023",
-            ".exception",
         ]
     for target_file in file_types:
         # Use glob to find files matching the target extension
@@ -161,8 +160,28 @@ def remove_temporary_files(
 def wait_until_text_verification(
     working_dir: Path, file_extension: str, text: str, max_waiting_time: int
 ) -> None:
-    # workaround
-    # sleep(max_waiting_time)
+    """Poll a directory for a file containing a target text.
+
+    Scans ``working_dir`` for the first file matching ``*{file_extension}``
+    and succeeds as soon as the file contains ``text``. Polls once per
+    second until ``max_waiting_time`` elapses.
+
+    Parameters
+    ----------
+    working_dir : Path
+        Directory in which to look for the file.
+    file_extension : str
+        File extension used to find a matching file (e.g. ``".log"``).
+    text : str
+        Substring that must be present in the file for the call to succeed.
+    max_waiting_time : int
+        Maximum time to wait, in seconds.
+
+    Raises
+    ------
+    TimeoutError
+        If the expected text is not found within ``max_waiting_time`` seconds.
+    """
     start_time = time()
     logger.debug(f"Start time: {start_time}")
     success = False

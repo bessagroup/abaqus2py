@@ -17,6 +17,7 @@ process
 # =============================================================================
 
 # Standard
+import logging
 from pathlib import Path
 from time import sleep
 from typing import Optional
@@ -26,10 +27,11 @@ import hydra
 import numpy as np
 import pandas as pd
 from f3dasm import ExperimentData
-from f3dasm import logger as f3dasm_logger
 from f3dasm.design import Domain
 
 from abaqus2py import F3DASMAbaqusSimulator
+
+f3dasm_logger = logging.getLogger("f3dasm")
 
 #                                                          Authorship & Credits
 # =============================================================================
@@ -88,13 +90,17 @@ def pre_processing(config):
     if "from_sampling" in config.imperfection:
         domain_imperfections = Domain.from_yaml(config.imperfection.domain)
 
-        imperfections = ExperimentData.from_sampling(
-            sampler=log_normal_sampler,
+        sampled_df = log_normal_sampler(
             domain=domain_imperfections,
             n_samples=config.experimentdata.from_sampling.n_samples,
             mean=config.imperfection.mean,
             sigma=config.imperfection.sigma,
             seed=config.experimentdata.from_sampling.seed,
+        )
+
+        imperfections = ExperimentData(
+            domain=domain_imperfections,
+            input_data=sampled_df,
         )
 
         experimentdata = experimentdata.join(imperfections)
@@ -153,13 +159,13 @@ def process(config):
         max_waiting_time=120,
     )
 
-    data.evaluate(data_generator=simulator_lin_buckle, mode=config.mode)
+    data = simulator_lin_buckle.call(data=data, mode=config.mode, pass_id=True)
 
     data.store()
 
     data.mark_all("open")
 
-    data.evaluate(data_generator=simulator_riks, mode=config.mode)
+    data = simulator_riks.call(data=data, mode=config.mode, pass_id=True)
 
     if config.mode == "sequential":
         # Store the ExperimentData to a csv file

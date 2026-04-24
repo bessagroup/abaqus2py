@@ -37,7 +37,7 @@ This repository serves as a port for running ABAQUS simulations throughout Pytho
 ## Getting started
 
 - You can find the installation instructions in the [Installation Guide](installation.md).
-- After installation, start by looking at the [Getting Started Guide](usage.ipynb).
+- The [API Reference](api.md) documents the public classes and functions.
 
 ## Community Support
 

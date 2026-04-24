@@ -34,7 +34,7 @@ tests = [
 
 [package.metadata]
 requires-dist = [
-    { name = "f3dasm", specifier = ">=2.2.1" },
+    { name = "f3dasm", editable = "/workspace/f3dasm" },
     { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.5.0" },
     { name = "mkdocs-include-exclude-files", marker = "extra == 'docs'", specifier = ">=0.1.0" },
     { name = "mkdocs-ipynb", marker = "extra == 'docs'", specifier = ">=0.1.1" },
@@ -181,6 +181,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -300,9 +309,10 @@ wheels = [
 
 [[package]]
 name = "f3dasm"
-version = "2.2.1"
-source = { registry = "https://pypi.org/simple" }
+version = "2.2.3"
+source = { editable = "/workspace/f3dasm" }
 dependencies = [
+    { name = "cloudpickle" },
     { name = "filelock" },
     { name = "hydra-core" },
     { name = "matplotlib" },
@@ -313,10 +323,35 @@ dependencies = [
     { name = "scipy" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/90/af8c9df7cdcffe143d9d3bf57ceb674dcffc66bf71b7a64705a1dba9c6ca/f3dasm-2.2.1.tar.gz", hash = "sha256:90b578b0286af84ace483d7084dec1eeeecddaa43f7ad6657e43d2b58b0aa46b", size = 53655, upload-time = "2025-12-08T20:44:56.142Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/68/4ec376d1092772360928a1eb407f15d7926836a8f099415b9718cd492533/f3dasm-2.2.1-py3-none-any.whl", hash = "sha256:5d43976de3bb5c5000a0eb195310c9d59fd8b2ccf1f291d9ef73322d71f45ec9", size = 60904, upload-time = "2025-12-08T20:44:55.148Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "abaqus2py", marker = "extra == 'all'", specifier = ">=1.0.0" },
+    { name = "cloudpickle", specifier = ">=3.1.2" },
+    { name = "filelock", specifier = ">=3.16.1" },
+    { name = "hydra-core", specifier = ">=1.3.2" },
+    { name = "hypothesis", marker = "extra == 'tests'", specifier = ">=6.138.0" },
+    { name = "matplotlib", specifier = ">=3.7.5" },
+    { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.5.0" },
+    { name = "mkdocs-include-exclude-files", marker = "extra == 'docs'", specifier = ">=0.1.0" },
+    { name = "mkdocs-ipynb", marker = "extra == 'docs'", specifier = ">=0.1.1" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.6.20" },
+    { name = "mkdocstrings", marker = "extra == 'docs'", specifier = ">=0.30.1" },
+    { name = "mkdocstrings-python", marker = "extra == 'docs'", specifier = ">=1.18.2" },
+    { name = "numpy", specifier = ">=1.24.4" },
+    { name = "optuna", marker = "extra == 'all'", specifier = ">=4.4.0" },
+    { name = "pandas", specifier = ">=2.0.3" },
+    { name = "pathos", specifier = ">=0.3.4" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.4.0" },
+    { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.16.1" },
+    { name = "pytest", marker = "extra == 'tests'", specifier = ">=8.4.1" },
+    { name = "pytest-cov", marker = "extra == 'tests'", specifier = ">=6.2.1" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
+    { name = "salib", specifier = ">=1.5.2" },
+    { name = "scipy", specifier = ">=1.10.1" },
+    { name = "xarray", specifier = ">=2023.1.0" },
 ]
+provides-extras = ["all", "dev", "docs", "tests"]
 
 [[package]]
 name = "filelock"

@@ -83,3 +83,6 @@ select = [
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+f3dasm = {editable = true, path = "/workspace/f3dasm"}

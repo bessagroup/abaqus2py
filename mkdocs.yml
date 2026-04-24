@@ -100,8 +100,7 @@ plugins:
 nav:
     - 'index.md'
     - Installation: 'installation.md'
-    - Getting Started: 'usage.ipynb'
-    - API Reference: 
+    - API Reference:
         - 'api.md'
-    - License: 
+    - License:
         - 'license.md'

@@ -7,6 +7,7 @@ Port to f3dasm framework for the Abaqus simulator
 
 # Standard
 import pickle
+from pathlib import Path
 from typing import Any, Optional
 
 # Third-party
@@ -14,6 +15,7 @@ from f3dasm import DataGenerator, ExperimentSample
 
 # Local
 from .abaqus_simulator import AbaqusSimulator
+from .io import DEFAULT_JOBNAME
 
 #                                                          Authorship & Credits
 # =============================================================================
@@ -26,6 +28,53 @@ __status__ = "Alpha"
 
 
 class F3DASMAbaqusSimulator(DataGenerator):
+    """f3dasm :class:`DataGenerator` adapter around :class:`AbaqusSimulator`.
+
+    Wrap a pair of Abaqus pre- and post-processing Python scripts so they can
+    be evaluated over an :class:`f3dasm.ExperimentData` via the standard
+    :meth:`DataGenerator.call` entry point.
+
+    Parameters
+    ----------
+    py_file : str
+        Path to the Python file containing the pre-processing function.
+    function_name : str, optional
+        Name of the callable to invoke inside ``py_file`` and
+        ``post_py_file``, by default ``"main"``.
+    post_py_file : str, optional
+        Path to the Python file containing the post-processing function.
+        If None, no post-processing step is run.
+    num_cpus : int, optional
+        Number of CPUs to use for the simulation, by default 1.
+    delete_odb : bool, optional
+        Delete the ODB file after post-processing, by default False.
+    delete_temp_files : bool, optional
+        Delete Abaqus temporary files after the simulation, by default False.
+    working_directory : str or Path, optional
+        Working directory where the simulation will be executed. Defaults to
+        the current working directory.
+    max_waiting_time : int, optional
+        Maximum waiting time (seconds) for the Abaqus job to finish, by
+        default 60.
+
+    Attributes
+    ----------
+    simulator : AbaqusSimulator
+        Underlying Abaqus simulator instance configured from the init args.
+    py_file : str
+        Path to the pre-processing Python file.
+    function_name : str
+        Name of the entry-point function in ``py_file`` / ``post_py_file``.
+    post_py_file : str or None
+        Path to the post-processing Python file, or None if not set.
+
+    Notes
+    -----
+    Callers must pass ``pass_id=True`` to :meth:`DataGenerator.call` so that
+    the job index is forwarded into :meth:`execute` as the ``id`` keyword
+    argument; this index is used as the per-sample sub-directory name.
+    """
+
     def __init__(
         self,
         py_file: str,
@@ -37,45 +86,60 @@ class F3DASMAbaqusSimulator(DataGenerator):
         working_directory: Optional[str] = None,
         max_waiting_time: int = 60,
     ):
-        """
-        f3dasm adapter for the Abaqus simulator
+        simulator_kwargs: dict[str, Any] = {
+            "num_cpus": num_cpus,
+            "delete_odb": delete_odb,
+            "delete_temp_files": delete_temp_files,
+            "max_waiting_time": max_waiting_time,
+        }
+        if working_directory is not None:
+            simulator_kwargs["working_directory"] = Path(working_directory)
 
-        Parameters
-        ----------
-        py_file : str
-            Path to the Python file containing the simulation function.
-        function_name : str
-            Name of the simulation function.
-        post_py_file : str
-            Path to the Python file containing the post-processing function.
-        num_cpus : int
-            Number of CPUs to use for the simulation.
-        delete_odb : bool
-            Delete the ODB file after the simulation.
-        delete_temp_files : bool
-            Delete temporary files after the simulation.
-        working_directory : str
-            Working directory where the simulation will be executed.
-        max_waiting_time : int
-            Maximum waiting time for the simulation to finish.
-        """
-
-        self.simulator = AbaqusSimulator(
-            num_cpus=num_cpus,
-            delete_odb=delete_odb,
-            delete_temp_files=delete_temp_files,
-            working_directory=working_directory,
-            max_waiting_time=max_waiting_time,
-        )
+        self.simulator = AbaqusSimulator(**simulator_kwargs)
 
         self.py_file = py_file
         self.function_name = function_name
         self.post_py_file = post_py_file
 
-    def execute(self, experiment_sample: ExperimentSample, **kwargs):
+    def execute(
+        self,
+        experiment_sample: ExperimentSample,
+        id: Optional[int] = None,
+        **kwargs,
+    ) -> ExperimentSample:
+        """Run the Abaqus simulation for a single experiment sample.
+
+        Builds the simulation parameter dictionary from the sample's input
+        data, uses the f3dasm-supplied job ``id`` as the sub-directory name,
+        runs the underlying :class:`AbaqusSimulator`, and loads the resulting
+        ``results.pkl`` back onto the experiment sample.
+
+        Parameters
+        ----------
+        experiment_sample : ExperimentSample
+            The sample whose input data drives the simulation and whose
+            outputs will be updated from ``results.pkl``.
+        id : int, optional
+            The job index of this sample, forwarded by f3dasm when
+            :meth:`DataGenerator.call` is invoked with ``pass_id=True``. Used
+            as the per-sample sub-directory name.
+        **kwargs
+            Additional keyword arguments merged into the simulation
+            parameters passed to ``py_file``'s entry-point function.
+
+        Returns
+        -------
+        ExperimentSample
+            The same sample, with simulation outputs stored via
+            :meth:`ExperimentSample.store`. Scalar outputs (``int``,
+            ``float``, ``str``) are stored in memory; other objects are
+            written to disk.
+        """
         sim_parameters = experiment_sample.to_dict()
-        sim_parameters["name"] = str(sim_parameters["job_number"])
+        if id is not None and "name" not in sim_parameters:
+            sim_parameters["name"] = str(id)
         sim_parameters.update(kwargs)
+        sim_parameters.setdefault("name", f"{DEFAULT_JOBNAME}_0")
 
         self.simulator.run(
             py_file=self.py_file,
@@ -85,22 +149,19 @@ class F3DASMAbaqusSimulator(DataGenerator):
             submit_job=True,
         )
 
-        # Read pickle file
-        with open(
+        results_path = (
             self.simulator.working_directory
             / sim_parameters["name"]
-            / "results.pkl",
-            "rb",
-        ) as f:
+            / "results.pkl"
+        )
+        with open(results_path, "rb") as f:
             results: dict[str, Any] = pickle.load(
                 f, fix_imports=True, encoding="latin1"
             )
 
         for key, value in results.items():
-            # Check if value is of one of these types: int, float, str
             if isinstance(value, int | float | str):
                 experiment_sample.store(object=value, name=key, to_disk=False)
-
             else:
                 experiment_sample.store(object=value, name=key, to_disk=True)
 
