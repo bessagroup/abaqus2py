@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Abaqus2Py: A Python interface for running ABAQUS simulations"
+abstract: >-
+  A thin Python interface for driving ABAQUS finite-element simulations from
+  regular Python function calls. It wraps the simulation lifecycle
+  (preprocessing, job submission, postprocessing) behind a small API and
+  integrates with f3dasm for data-driven design pipelines.
+authors:
+  - family-names: "van der Schelling"
+    given-names: "Martin P."
+    email: "m.p.vanderschelling@tudelft.nl"
+    orcid: "https://orcid.org/0000-0003-3602-0452"
+  - family-names: "Yi"
+    given-names: "Jiaxiang"
+    email: "J.Yi@tudelft.nl"
+    orcid: "https://orcid.org/0000-0002-0797-4418"
+license: BSD-3-Clause
+repository-code: "https://github.com/bessagroup/abaqus2py"
+version: "1.1.0"
+type: software
+keywords:
+  - abaqus
+  - python
+  - interface
+  - finite-element
+  - data-driven-design

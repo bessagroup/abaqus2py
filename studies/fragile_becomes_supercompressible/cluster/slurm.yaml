@@ -1,0 +1,23 @@
+# @package _global_
+
+# Submit the pipeline to SLURM. f3dasm generates a self-resubmitting
+# orchestrator that submits one step (or loop iteration) at a time, fanning
+# the parallel `lin_buckle` / `riks` steps out as SLURM array jobs.
+#
+# Every `cluster.*` key (except `enabled`) is passed verbatim to
+# f3dasm.SlurmCluster.from_yaml, so adjust partition/account to your system
+# and add the module loads / environment your ABAQUS install needs to
+# `env_setup` (these run before each worker command).
+cluster:
+  enabled: true
+  partition: batch
+  account: default
+  runner: uv run
+  env_setup:
+    - module load abaqus
+  env_vars:
+    HYDRA_FULL_ERROR: "1"
+    F3DASM_LOG_LEVEL: ${log_level}
+hydra:
+  job:
+    chdir: false

@@ -1,23 +1,25 @@
-.DEFAULT_GOAL := help
+.PHONY: help build test lint format docs
 
-PACKAGEDIR := dist
-
-.PHONY: help init init-dev test test-smoke test-smoke-html test-html build upload upload-testpypi
-
+# Default target
 help:
-	@echo "Please use \`make <target>' where <target> is one of:"
-	@echo "  build               Build the package"
-	@echo "  upload              Upload the package to the PyPi index"
-	@echo "  upload-testpypi     Upload the package to the PyPi-test index"
+	@echo "Available targets:"
+	@echo "  build        - Build the package distribution"
+	@echo "  test         - Run tests"
+	@echo "  lint         - Lint code"
+	@echo "  docs         - Build documentation"
 
+# Build targets
 build:
-	-rm -rf $(PACKAGEDIR)/*
-	python -m build
+	uv build
 
-upload-testpypi:
-	$(MAKE) build
-	twine upload -r testpypi $(PACKAGEDIR)/* --verbose
+# Testing targets
+test:
+	uv run pytest -v -s
 
-upload:
-	$(MAKE) build
-	twine upload $(PACKAGEDIR)/* --verbose
+# Linting and formatting targets
+lint:
+	ruff check
+
+# Documentation targets
+docs:
+	uv run mkdocs build

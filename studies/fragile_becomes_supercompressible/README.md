@@ -64,39 +64,40 @@ $\frac{d}{D_1}$	|`ratio_d`
 
 | File/Folder | Description |
 |-------------|-------------|
-| `main.py` | Main script to run the experiment |
+| `main.py` | `f3dasm` Pipeline script that runs the experiment |
 | `config.yaml` | Configuration file for the experiment |
+| `cluster/` | Hydra config group selecting `local` (in-process) or `slurm` execution |
+| `run_slurm.sh` | `sbatch` launcher that submits the pipeline to SLURM |
 | `README.md` | Explanation of this experiment |
 | `img/` | Folder with images used in this file |
-| `pbsjob.sh` | TORQUE job file to run the experiment in a cluster |
-| `outputs/` | Folder with the results of running this experiment |
+| `example_design/` | A single pre-defined design used as the default input |
 
-> The `outputs/` folder is created when the experiment has been run for the first time.
+> A run folder (under `rootdir`, the current directory by default) is created when the experiment has been run for the first time.
+
+This study is built on the `f3dasm` [`Pipeline`](https://f3dasm.readthedocs.io/en/latest/) API. `main.py` defines a five-step pipeline — `create` → `lin_buckle` → `reset` → `riks` → `post` — and `f3dasm` owns all array-job submission, dependency handling and synchronization for both local and SLURM execution. The `lin_buckle` and `riks` simulations are driven by `abaqus2py`'s `F3DASMAbaqusSimulator`.
 
 ## Usage
 
 ### Before running the experiment
 
-1. Install the `abaqus2py` package. See [here](https://github.com/bessagroup/abaqus2py) for instructions.
-2. Change the `config.yaml` file to your liking. See [here](#explanation-of-configyaml-parameters) for an explanation of the parameters.
+1. Install the `abaqus2py` package (it depends on `f3dasm`). See [here](https://github.com/bessagroup/abaqus2py) for instructions.
+2. Edit `config.yaml` to your liking. See [here](#explanation-of-configyaml-parameters) for an explanation of the parameters. In particular, point `scripts_dir` at your ABAQUS pre/post-processing scripts (it defaults to the `scripts/` folder of the `abaqus2py` repo).
 
 ### Running the experiment on your local machine
 
-1. Navigate to this folder and run `python main.py`
+1. Navigate to this folder and run `uv run main.py` (mode defaults to `local`).
 
-### Running the experiment on a TORQUE cluster
+### Running the experiment on a SLURM cluster
 
-1. Make sure you have an `conda` environment named `f3dasm_env` with the packages installed in the first step
-2. Navigate to this folder and submit the job with i.e. 2 nodes: `qsub pbsjob.sh -t 0-2`
+1. Edit `cluster/slurm.yaml` to match your cluster (partition, account, and the `env_setup` module loads your ABAQUS install needs).
+2. Submit with `sbatch run_slurm.sh` (which runs `uv run main.py cluster=slurm ++mode=slurm ++rootdir=...`), or directly: `uv run main.py cluster=slurm ++mode=slurm ++rootdir=/path/to/scratch`.
 
 
 ## Results
 
-Results are stored in a newly created `outputs` folder, with a subdirectory
-indicating the current date (e.g. `2023-11-06`).
-
-* When running on a local machine, the output will be saved in a directory indicating the current time (e.g. `13-50-14`).
-* When running on a cluster, the output will be saved in a directory indicating the current job ID (e.g. `538734.hpc06.hpc`).
+Results are stored in a run folder created under `rootdir` (the current
+directory by default), named after the pipeline's project-job ID (a Unix
+timestamp, e.g. `1717689600`).
 
 The following subdirectories are created:
 
@@ -110,32 +111,28 @@ Lastly, a log file `main.log` is created.
 The folder structure is as follows:
 
 ```
-outputs/
-└── 2023-11-06/
-    └── 13-50-14/
-        ├── .hydra/
-        ├── experiment_data/
-        │   ├── domain.pkl
-        │   ├── input.csv
-        │   ├── output.csv
-        │   └── jobs.pkl
-        ├── lin_buckle/
-        │   ├── 0/
-        │   ├── 1/
-        │   └── 2/
-        ├── riks/
-        │   ├── 0/
-        │   ├── 1/
-        │   └── 2/
-        ├── loads/
-        │   ├── 0.npy
-        │   ├── 1.npy
-        │   └── 2.npy
-        ├── max_disps/
-        │   ├── 0.ny
-        │   ├── 1.npy
-        │   └── 2.npy
-        └── main.log
+1717689600/
+├── experiment_data/
+│   ├── domain.json
+│   ├── input.csv
+│   ├── output.csv
+│   └── jobs.csv
+├── lin_buckle/
+│   ├── 0/
+│   ├── 1/
+│   └── 2/
+├── riks/
+│   ├── 0/
+│   ├── 1/
+│   └── 2/
+├── loads/
+│   ├── 0.npy
+│   ├── 1.npy
+│   └── 2.npy
+└── max_disps/
+    ├── 0.npy
+    ├── 1.npy
+    └── 2.npy
 ```
 
 ## Explanation of `config.yaml` parameters
@@ -231,23 +228,24 @@ There are two different configurations for this experiment:
 #### from Sampling
 | Name         | Type   | Description            |
 |--------------|--------|------------------------|
-| sampler      | `str` | Sampler name            |
+| sampler      | `str` | `f3dasm` sampler name (e.g. `latin`, `random`, `sobol`) |
 | seed         | `int`    | Seed value              |
 | n_samples    | `int`    | Number of samples       |
-| domain       | `f3dasm.Domain` | `f3dasm` Domain object ([reference](https://f3dasm.readthedocs.io/en/latest/rst_doc_files/classes/design/domain.html))            |
+
+When `from_sampling` is set, the design domain is taken from `config.domain` (the selected `3d_domain`/`7d_domain` default) and a lognormal imperfection column is joined on (see [imperfection](#imperfection)). Omit `from_sampling` and set `from_file` instead to load a pre-existing `ExperimentData` directory.
 
 ### mode
 | Name  | Type   | Description |
 |-------|--------|-------------|
-| mode  | string | Evaluation mode of `f3dasm` ([reference](https://f3dasm.readthedocs.io/en/latest/rst_doc_files/classes/datageneration/datagenerator.html#)) |
+| mode  | `str` | Pipeline execution mode: `local` (in-process) or `slurm`. Selected automatically as `slurm` by `run_slurm.sh`. |
 
+### rootdir
+| Name    | Type | Description |
+|---------|------|-------------|
+| rootdir | `str` or `null` | Root directory under which the pipeline creates its run folder. `null` uses the current directory. |
 
-### hpc
-| Name   | Type | Description  |
-|--------|------|--------------|
-| jobid[^2]  | `int`  | Job ID of the array-job, automatically overwritten by scheduler bash script |
-
-[^2]: When running on a local machine, this value will be left as the default: -1.
+### cluster
+The `cluster` config group (`cluster/local.yaml`, `cluster/slurm.yaml`) selects the execution backend. When `cluster.enabled` is `true`, the remaining `cluster.*` keys (`partition`, `account`, `runner`, `env_setup`, `env_vars`) are passed to [`f3dasm.SlurmCluster`](https://f3dasm.readthedocs.io/en/latest/) to generate the SLURM scripts. Select with e.g. `cluster=slurm`.
 
 ### imperfection
 
@@ -258,12 +256,14 @@ There are two different configurations for this experiment:
 
 ### scripts
 
+`scripts_dir` is the base directory of the ABAQUS pre/post-processing scripts; it defaults to the `scripts/` folder of the `abaqus2py` repo (resolved relative to the launch directory). The four `scripts.*` paths below are derived from it — override `scripts_dir` to point elsewhere.
+
 | Name         | Type   | Description            |
 |--------------|--------|------------------------|
-| lin_buckle_pre      | `str` | Absolute path of linear buckling script |
-| lin_buckle_post         | `str`    | Absolute path of linear buckling post-processing script |
-| riks_pre      | `str` | Absolute path of RIKS analysis script |
-| riks_post         | `str`    | Absolute path of RIKS analysis post-processing script |
+| lin_buckle_pre      | `str` | Path of the linear buckling pre-processing script |
+| lin_buckle_post         | `str`    | Path of the linear buckling post-processing script |
+| riks_pre      | `str` | Path of the Riks analysis pre-processing script |
+| riks_post         | `str`    | Path of the Riks analysis post-processing script |
 
 
 ### Logging

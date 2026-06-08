@@ -2,9 +2,10 @@
 
 [![GitHub license](https://img.shields.io/badge/license-BSD-blue)](https://github.com/bessagroup/abaqus2py)
 
-[**Docs**](https://abaqus2py.readthedocs.io)
+[**Docs**](https://bessagroup.github.io/abaqus2py/)
 | [**GitHub**](https://github.com/bessagroup/abaqus2py)
 | [**PyPI**](https://pypi.org/project/abaqus2py/)
+| [**Installation**](installation.md)
 
 **First publication:** March 15, 2024
 
@@ -106,8 +107,9 @@ pip install -e '.[dev,docs,tests]'
 ```
 
 This project is `uv`-managed, so you can equivalently run `uv sync`. See the
-[Contributing Guide](CONTRIBUTING.md) for detailed development instructions, and
-the [Getting Started Guide](docs/usage.ipynb) for a walkthrough of the API.
+[Contributing Guide](https://github.com/bessagroup/abaqus2py/blob/main/CONTRIBUTING.md)
+for detailed development instructions, and the [Getting Started Guide](usage.ipynb)
+for a walkthrough of the API.
 
 ## Studies
 
@@ -123,12 +125,13 @@ end-to-end usage pattern.
 * If you find any **issues, bugs or problems** within this repository, please use the [GitHub issue tracker](https://github.com/bessagroup/abaqus2py/issues) to report them.
 * If you have **questions, feature requests or ideas** for this project, please use the [GitHub Discussions](https://github.com/bessagroup/abaqus2py/discussions)
 
-Please refer to abaqus2py's [Code of Conduct](CODE_OF_CONDUCT.md)
+Please refer to abaqus2py's [Code of Conduct](https://github.com/bessagroup/abaqus2py/blob/main/CODE_OF_CONDUCT.md)
 
 ## Citing
 
 If you use Abaqus2Py in your research, please cite it. Citation metadata is
-provided in [CITATION.cff](CITATION.cff); the corresponding BibTeX entry is:
+provided in [CITATION.cff](https://github.com/bessagroup/abaqus2py/blob/main/CITATION.cff);
+the corresponding BibTeX entry is:
 
 ```bibtex
 @software{abaqus2py,
@@ -146,6 +149,5 @@ Copyright 2026, Bessa Research Group
 
 All rights reserved.
 
-This project is licensed under the BSD 3-Clause License. See [LICENSE](LICENSE) for the full license text.
+This project is licensed under the BSD 3-Clause License. See [LICENSE](license.md) for the full license text.
 </content>
-</invoke>
