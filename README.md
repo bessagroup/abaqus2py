@@ -2,10 +2,9 @@
 
 [![GitHub license](https://img.shields.io/badge/license-BSD-blue)](https://github.com/bessagroup/abaqus2py)
 
-[**Docs**](https://bessagroup.github.io/abaqus2py/)
+[**Docs**](https://abaqus2py.readthedocs.io)
 | [**GitHub**](https://github.com/bessagroup/abaqus2py)
 | [**PyPI**](https://pypi.org/project/abaqus2py/)
-| [**Installation**](https://bessagroup.github.io/abaqus2py/installation/)
 
 **First publication:** March 15, 2024
 
