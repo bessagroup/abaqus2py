@@ -5,6 +5,7 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pytest
 from f3dasm import DataGenerator, ExperimentSample
 
@@ -26,6 +27,7 @@ class _FakeInnerSim:
         post_py_file,
         simulation_parameters,
         submit_job,
+        post_function_name=None,
     ):
         self.last_call = {
             "py_file": py_file,
@@ -33,6 +35,7 @@ class _FakeInnerSim:
             "post_py_file": post_py_file,
             "simulation_parameters": simulation_parameters,
             "submit_job": submit_job,
+            "post_function_name": post_function_name,
         }
         sample_dir = self.working_directory / simulation_parameters["name"]
         sample_dir.mkdir(parents=True, exist_ok=True)
@@ -129,3 +132,33 @@ def test_execute_raises_when_results_missing(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError):
         adapter.execute(experiment_sample=sample, id=0)
+
+
+def test_execute_numpy_scalar_stored_in_memory(tmp_path: Path):
+    # A numpy scalar result must be treated as a scalar (in-memory), not
+    # pushed to disk like an array.
+    adapter = _build_adapter(
+        tmp_path, {"npfloat": np.float64(2.5), "arr": np.zeros(3)}
+    )
+    sample = ExperimentSample(_input_data={"x0": 1.0})
+
+    out = adapter.execute(experiment_sample=sample, id=0)
+
+    assert out._output_data["npfloat"] == 2.5
+    # The array is wrapped as a ToDiskValue object, not the raw ndarray.
+    assert not isinstance(out._output_data["arr"], np.ndarray)
+
+
+def test_post_function_name_forwarded(tmp_path: Path):
+    adapter = F3DASMAbaqusSimulator(
+        py_file=str(tmp_path / "pre.py"),
+        post_py_file=str(tmp_path / "post.py"),
+        working_directory=tmp_path,
+        post_function_name="extract",
+    )
+    adapter.simulator = _FakeInnerSim(working_directory=tmp_path, results={})
+    sample = ExperimentSample(_input_data={"x0": 1.0})
+
+    adapter.execute(experiment_sample=sample, id=0)
+
+    assert adapter.simulator.last_call["post_function_name"] == "extract"

@@ -8,6 +8,7 @@ IO functions for the abaqus2py package.
 # Standard
 import logging
 import pickle
+from collections.abc import Iterable
 from pathlib import Path
 from time import sleep, time
 from typing import Optional
@@ -69,16 +70,19 @@ def create_preprocess_script(
         ".py"
     )
     siminfo_path = working_dir / Path(FILENAME_SIMINFO).with_suffix(".pkl")
+    # Paths are embedded with repr() rather than hand-built r'...' literals so
+    # that paths containing quotes, backslashes or other special characters
+    # produce valid Python in the generated script.
     with open(preprocess_path, "w") as f:
         f.write("import os\n")
         f.write("import sys\n")
         f.write("import pickle\n")
-        f.write(f"sys.path.extend([r'{python_file.parent}'])\n")
+        f.write(f"sys.path.extend([{repr(str(python_file.parent))}])\n")
         f.write(f"from {python_file.stem} import {function_name}\n")
-        f.write(f"with open(r'{siminfo_path}', 'rb') as f:\n")
-        f.write("    dict = pickle.load(f)\n")
-        f.write(f"os.chdir(r'{working_dir}')\n")
-        f.write(f"{function_name}(dict)\n")
+        f.write(f"with open({repr(str(siminfo_path))}, 'rb') as f:\n")
+        f.write("    sim_info = pickle.load(f)\n")
+        f.write(f"os.chdir({repr(str(working_dir))})\n")
+        f.write(f"{function_name}(sim_info)\n")
 
 
 def create_postprocess_script(
@@ -103,14 +107,17 @@ def create_postprocess_script(
         ".py"
     )
     odb_path = odb_file.with_suffix(".odb")
+    # Paths are embedded with repr() rather than hand-built r'...' literals so
+    # that paths containing quotes, backslashes or other special characters
+    # produce valid Python in the generated script.
     with open(postprocess_path, "w") as f:
         f.write("import os\n")
         f.write("import sys\n")
         f.write("from abaqus import session\n")
-        f.write(f"sys.path.extend([r'{python_file.parent}'])\n")
+        f.write(f"sys.path.extend([{repr(str(python_file.parent))}])\n")
         f.write(f"from {python_file.stem} import {function_name}\n")
-        f.write(f"odb = session.openOdb(name=r'{odb_path}')\n")
-        f.write(f"os.chdir(r'{working_dir}')\n")
+        f.write(f"odb = session.openOdb(name={repr(str(odb_path))})\n")
+        f.write(f"os.chdir({repr(str(working_dir))})\n")
         f.write(f"{function_name}(odb)\n")
 
 
@@ -158,57 +165,76 @@ def remove_temporary_files(
 
 
 def wait_until_text_verification(
-    working_dir: Path, file_extension: str, text: str, max_waiting_time: int
+    working_dir: Path,
+    file_extension: str,
+    text: str,
+    max_waiting_time: int,
+    failure_texts: Optional[Iterable[str]] = None,
 ) -> None:
     """Poll a directory for a file containing a target text.
 
-    Scans ``working_dir`` for the first file matching ``*{file_extension}``
-    and succeeds as soon as the file contains ``text``. Polls once per
-    second until ``max_waiting_time`` elapses.
+    Scans ``working_dir`` for *every* file matching ``*{file_extension}`` and
+    succeeds as soon as any of them contains ``text``. Polls once per second
+    until ``max_waiting_time`` elapses. If ``failure_texts`` is given and any
+    of those markers is found in a matching file, the call fails fast with a
+    ``RuntimeError`` instead of waiting for the timeout.
 
     Parameters
     ----------
     working_dir : Path
         Directory in which to look for the file.
     file_extension : str
-        File extension used to find a matching file (e.g. ``".log"``).
+        File extension used to find matching files (e.g. ``".log"``). All
+        matching files are inspected, not just the first one.
     text : str
-        Substring that must be present in the file for the call to succeed.
+        Substring that must be present in a file for the call to succeed.
     max_waiting_time : int
         Maximum time to wait, in seconds.
+    failure_texts : Iterable of str, optional
+        Substrings that signal the Abaqus job failed. If any is found in a
+        matching file, a ``RuntimeError`` is raised immediately. ``None``
+        (default) disables failure detection.
 
     Raises
     ------
+    RuntimeError
+        If one of ``failure_texts`` is found in a matching file.
     TimeoutError
         If the expected text is not found within ``max_waiting_time`` seconds.
     """
+    failure_texts = list(failure_texts) if failure_texts is not None else []
     start_time = time()
     logger.debug(f"Start time: {start_time}")
-    success = False
 
     while time() - start_time < max_waiting_time:
         logger.debug(
             f"waiting for {file_extension} file "
             f"({time() - start_time} < {max_waiting_time})"
         )
-        if not any(working_dir.glob(f"*{file_extension}")):
+        matches = list(working_dir.glob(f"*{file_extension}"))
+        if not matches:
             logger.debug(f"no {file_extension} file found")
             sleep(1)
             continue
 
-        filename = working_dir.glob(f"*{file_extension}").__next__()
-        logger.debug(f"found {filename} file!")
-        with open(filename) as file:
-            if text in file.read():
-                success = True
-                logger.debug(f"found {text} in {file_extension} file!")
+        for filename in matches:
+            logger.debug(f"found {filename} file!")
+            contents = filename.read_text()
+
+            for marker in failure_texts:
+                if marker in contents:
+                    raise RuntimeError(
+                        f"Abaqus reported a failure ('{marker}') in {filename}"
+                    )
+
+            if text in contents:
+                logger.debug(f"found {text} in {filename}!")
                 return
 
         sleep(1)
 
-    if not success:
-        raise TimeoutError(
-            f"Did not find {text} in {file_extension} file "
-            f"({working_dir}) within "
-            f"{max_waiting_time} seconds"
-        )
+    raise TimeoutError(
+        f"Did not find {text} in {file_extension} file "
+        f"({working_dir}) within "
+        f"{max_waiting_time} seconds"
+    )

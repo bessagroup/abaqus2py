@@ -1,0 +1,9 @@
+# @package _global_
+
+# Run the pipeline in-process. f3dasm executes each step sequentially and
+# fans parallel steps out with multiprocessing.
+cluster:
+  enabled: false
+hydra:
+  job:
+    chdir: true

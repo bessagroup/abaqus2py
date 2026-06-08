@@ -15,7 +15,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Mathematics"
 ]
 dependencies = [
-  "f3dasm>=2.2.1"
+  "f3dasm"
 ]
 description = "Abaqus to Python interface"
 keywords = ["abaqus", "python", "interface"]
@@ -85,4 +85,4 @@ select = [
 package = true
 
 [tool.uv.sources]
-f3dasm = {editable = true, path = "/workspace/f3dasm"}
+f3dasm = {editable = true, path = "../f3dasm"}

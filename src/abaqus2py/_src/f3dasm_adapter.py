@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 # Third-party
+import numpy as np
 from f3dasm import DataGenerator, ExperimentSample
 
 # Local
@@ -39,11 +40,15 @@ class F3DASMAbaqusSimulator(DataGenerator):
     py_file : str
         Path to the Python file containing the pre-processing function.
     function_name : str, optional
-        Name of the callable to invoke inside ``py_file`` and
-        ``post_py_file``, by default ``"main"``.
+        Name of the callable to invoke inside ``py_file`` (and inside
+        ``post_py_file`` when ``post_function_name`` is not given), by default
+        ``"main"``.
     post_py_file : str, optional
         Path to the Python file containing the post-processing function.
         If None, no post-processing step is run.
+    post_function_name : str, optional
+        Name of the callable to invoke inside ``post_py_file``. Defaults to
+        ``function_name`` when not given.
     num_cpus : int, optional
         Number of CPUs to use for the simulation, by default 1.
     delete_odb : bool, optional
@@ -64,9 +69,11 @@ class F3DASMAbaqusSimulator(DataGenerator):
     py_file : str
         Path to the pre-processing Python file.
     function_name : str
-        Name of the entry-point function in ``py_file`` / ``post_py_file``.
+        Name of the entry-point function in ``py_file``.
     post_py_file : str or None
         Path to the post-processing Python file, or None if not set.
+    post_function_name : str
+        Name of the entry-point function in ``post_py_file``.
 
     Notes
     -----
@@ -85,6 +92,7 @@ class F3DASMAbaqusSimulator(DataGenerator):
         delete_temp_files: bool = False,
         working_directory: Optional[str] = None,
         max_waiting_time: int = 60,
+        post_function_name: Optional[str] = None,
     ):
         simulator_kwargs: dict[str, Any] = {
             "num_cpus": num_cpus,
@@ -100,6 +108,7 @@ class F3DASMAbaqusSimulator(DataGenerator):
         self.py_file = py_file
         self.function_name = function_name
         self.post_py_file = post_py_file
+        self.post_function_name = post_function_name
 
     def execute(
         self,
@@ -131,9 +140,9 @@ class F3DASMAbaqusSimulator(DataGenerator):
         -------
         ExperimentSample
             The same sample, with simulation outputs stored via
-            :meth:`ExperimentSample.store`. Scalar outputs (``int``,
-            ``float``, ``str``) are stored in memory; other objects are
-            written to disk.
+            :meth:`ExperimentSample.store`. Scalar outputs (Python and numpy
+            ``int``/``float``/``bool`` and ``str``) are stored in memory;
+            other objects (arrays, lists, ...) are written to disk.
         """
         sim_parameters = experiment_sample.to_dict()
         if id is not None and "name" not in sim_parameters:
@@ -147,6 +156,7 @@ class F3DASMAbaqusSimulator(DataGenerator):
             post_py_file=self.post_py_file,
             simulation_parameters=sim_parameters,
             submit_job=True,
+            post_function_name=self.post_function_name,
         )
 
         results_path = (
@@ -160,9 +170,9 @@ class F3DASMAbaqusSimulator(DataGenerator):
             )
 
         for key, value in results.items():
-            if isinstance(value, int | float | str):
-                experiment_sample.store(object=value, name=key, to_disk=False)
-            else:
-                experiment_sample.store(object=value, name=key, to_disk=True)
+            # np.isscalar covers Python and numpy int/float/bool/str scalars
+            # but not arrays or 0-d ndarrays, which belong on disk.
+            to_disk = not np.isscalar(value)
+            experiment_sample.store(object=value, name=key, to_disk=to_disk)
 
         return experiment_sample

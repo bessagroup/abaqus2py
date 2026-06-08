@@ -1,6 +1,8 @@
 defaults:
   - 7d_domain
+  - cluster: local
   - override hydra/job_logging: custom
+  - _self_
 
 experimentdata:
   from_file: ./example_design
@@ -9,12 +11,6 @@ experimentdata:
   #   sampler: latin
   #   seed: 42
   #   n_samples: 3
-  #   domain: ${domain}
-
-mode: sequential
-
-hpc:
-  jobid: -1
 
 imperfection:
   mean: -2.705021452041446
@@ -25,11 +21,22 @@ imperfection:
       low: 0.0
       high: 1.0
 
+# Base directory of the ABAQUS pre/post-processing scripts. Defaults to the
+# abaqus2py repo's own scripts/ dir, resolved relative to the original launch
+# directory (this study folder). Override with ++scripts_dir=/path/to/scripts.
+scripts_dir: ${hydra:runtime.cwd}/../../scripts
 scripts:
-  lin_buckle_pre: '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_lin_buckle.py'
-  lin_buckle_post:  '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_lin_buckle_pp.py'
-  riks_pre: '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_riks.py'
-  riks_post: '/home/martin/Documents/GitHub/abaqus2py/scripts/supercompressible_riks_pp.py'
+  lin_buckle_pre: ${scripts_dir}/supercompressible_lin_buckle.py
+  lin_buckle_post: ${scripts_dir}/supercompressible_lin_buckle_pp.py
+  riks_pre: ${scripts_dir}/supercompressible_riks.py
+  riks_post: ${scripts_dir}/supercompressible_riks_pp.py
 
+# Execution mode of the pipeline: "local" or "slurm". Overridden to "slurm"
+# by run_slurm.sh / when selecting cluster=slurm on an HPC system.
+mode: local
 
+# Root directory for pipeline run folders; null uses the current directory.
+rootdir: null
+
+# f3dasm logger level (20 = INFO).
 log_level: 20

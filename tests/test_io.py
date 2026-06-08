@@ -52,11 +52,11 @@ def test_create_preprocess_script_contents(tmp_path: Path):
 
     text = script_path.read_text()
     assert "import pickle" in text
-    assert f"sys.path.extend([r'{python_file.parent}'])" in text
+    assert f"sys.path.extend([{repr(str(python_file.parent))}])" in text
     assert f"from {python_file.stem} import run_me" in text
     assert f"{FILENAME_SIMINFO}.pkl" in text
-    assert f"os.chdir(r'{tmp_path}')" in text
-    assert "run_me(dict)" in text
+    assert f"os.chdir({repr(str(tmp_path))})" in text
+    assert "run_me(sim_info)" in text
 
 
 def test_create_postprocess_script_contents(tmp_path: Path):
@@ -74,9 +74,9 @@ def test_create_postprocess_script_contents(tmp_path: Path):
 
     text = script_path.read_text()
     assert "from abaqus import session" in text
-    assert f"sys.path.extend([r'{python_file.parent}'])" in text
+    assert f"sys.path.extend([{repr(str(python_file.parent))}])" in text
     assert f"from {python_file.stem} import post" in text
-    assert "session.openOdb(name=r'" in text
+    assert "session.openOdb(name=" in text
     assert str(odb_file.with_suffix(".odb")) in text
     assert "post(odb)" in text
 
@@ -131,3 +131,47 @@ def test_wait_until_text_verification_timeout(tmp_path: Path):
             text="NEVER_PRESENT",
             max_waiting_time=1,
         )
+
+
+def test_wait_until_text_verification_scans_all_matches(tmp_path: Path):
+    # The marker lives in a file that is not the first glob match; the waiter
+    # must still find it instead of only inspecting one arbitrary file.
+    (tmp_path / "a.log").write_text("nothing here")
+    (tmp_path / "z.log").write_text("JOB TIME SUMMARY")
+
+    wait_until_text_verification(
+        working_dir=tmp_path,
+        file_extension=".log",
+        text="JOB TIME SUMMARY",
+        max_waiting_time=2,
+    )
+
+
+def test_wait_until_text_verification_failure_marker(tmp_path: Path):
+    (tmp_path / "job.msg").write_text("THE ANALYSIS HAS NOT BEEN COMPLETED")
+
+    with pytest.raises(RuntimeError, match="Abaqus reported a failure"):
+        wait_until_text_verification(
+            working_dir=tmp_path,
+            file_extension=".msg",
+            text="JOB TIME SUMMARY",
+            max_waiting_time=5,
+            failure_texts=["THE ANALYSIS HAS NOT BEEN COMPLETED"],
+        )
+
+
+def test_create_preprocess_script_handles_quote_in_path(tmp_path: Path):
+    # A path containing a single quote must still produce valid Python.
+    weird_dir = tmp_path / "o'clock"
+    weird_dir.mkdir()
+    python_file = weird_dir / "module.py"
+
+    create_preprocess_script(
+        working_dir=weird_dir,
+        python_file=python_file,
+        function_name="main",
+    )
+
+    text = (weird_dir / f"{FILENAME_PREPROCESS}.py").read_text()
+    # Should compile without raising a SyntaxError.
+    compile(text, "preprocess.py", "exec")
