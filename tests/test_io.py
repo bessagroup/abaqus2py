@@ -76,8 +76,11 @@ def test_create_postprocess_script_contents(tmp_path: Path):
     assert "from abaqus import session" in text
     assert f"sys.path.extend([{repr(str(python_file.parent))}])" in text
     assert f"from {python_file.stem} import post" in text
-    assert "session.openOdb(name=" in text
-    assert str(odb_file.with_suffix(".odb")) in text
+    odb_path = odb_file.with_suffix(".odb")
+    # The path is embedded with repr() so it is a valid Python string literal;
+    # on Windows that doubles the backslashes, so match the repr() form rather
+    # than the raw path.
+    assert f"session.openOdb(name={repr(str(odb_path))})" in text
     assert "post(odb)" in text
 
 
