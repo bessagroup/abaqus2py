@@ -11,7 +11,7 @@ repos:
     rev: v0.13.0
     hooks:
       - id: ruff-format # formatter
-        types_or: [python, pyi, jupyter, toml]
+        types_or: [python, pyi, jupyter]
       - id: ruff-check # linter
-        types_or: [python, pyi, jupyter, toml]
+        types_or: [python, pyi, jupyter]
         args: [--fix]
