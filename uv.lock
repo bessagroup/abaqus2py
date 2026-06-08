@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "abaqus2py"
-version = "1.2.1"
+version = "1.2.2"
 source = { editable = "." }
 dependencies = [
     { name = "f3dasm" },

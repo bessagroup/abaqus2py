@@ -1,0 +1,26 @@
+{
+  "title": "Abaqus2Py: A Python interface for running ABAQUS simulations",
+  "description": "A thin Python interface for driving ABAQUS finite-element simulations from regular Python function calls. It wraps the simulation lifecycle (preprocessing, job submission, postprocessing) behind a small API and integrates with f3dasm for data-driven design pipelines.",
+  "upload_type": "software",
+  "license": "BSD-3-Clause",
+  "creators": [
+    {
+      "name": "van der Schelling, Martin P.",
+      "orcid": "0000-0003-3602-0452",
+      "affiliation": "Delft University of Technology"
+    },
+    {
+      "name": "Yi, Jiaxiang",
+      "orcid": "0000-0002-0797-4418",
+      "affiliation": "Delft University of Technology"
+    }
+  ],
+  "keywords": [
+    "abaqus",
+    "python",
+    "interface",
+    "finite-element",
+    "data-driven-design"
+  ],
+  "version": "1.2.1"
+}
