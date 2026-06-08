@@ -14,10 +14,10 @@ authors:
   - family-names: "Yi"
     given-names: "Jiaxiang"
     email: "J.Yi@tudelft.nl"
-    orcid: "https://orcid.org/0000-0002-0797-4418"
+    orcid: "https://orcid.org/0009-0007-9287-4328"
 license: BSD-3-Clause
 repository-code: "https://github.com/bessagroup/abaqus2py"
-version: "1.1.0"
+version: "1.2.1"
 type: software
 keywords:
   - abaqus
