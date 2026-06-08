@@ -24,7 +24,7 @@ name = "abaqus2py"
 readme = "README.md"
 requires-python = ">=3.11"
 urls = {repository = "https://github.com/bessagroup/abaqus2py"}
-version = "1.1.0"
+version = "1.2.0"
 
 [project.optional-dependencies]
 dev = [
