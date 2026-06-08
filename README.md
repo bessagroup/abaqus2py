@@ -1,10 +1,12 @@
 # Abaqus2Py
 
 [![GitHub license](https://img.shields.io/badge/license-BSD-blue)](https://github.com/bessagroup/abaqus2py)
+[![DOI](https://zenodo.org/badge/772585162.svg)](https://doi.org/10.5281/zenodo.20591698)
 
 [**Docs**](https://abaqus2py.readthedocs.io)
 | [**GitHub**](https://github.com/bessagroup/abaqus2py)
 | [**PyPI**](https://pypi.org/project/abaqus2py/)
+| [**Zenodo**](https://zenodo.org/record/20591698)
 
 **First publication:** March 15, 2024
 
