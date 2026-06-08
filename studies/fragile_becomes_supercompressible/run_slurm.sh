@@ -20,7 +20,8 @@
 # e.g.:
 #   sbatch run_slurm.sh ++scripts_dir=/path/to/abaqus2py/scripts
 
-ROOTDIR="${ROOTDIR:-/scratch/$USER/supercompressible}"
+# Oscar (Brown) per-user scratch is /oscar/scratch/$USER -- NOT /scratch/$USER.
+ROOTDIR="${ROOTDIR:-/oscar/scratch/$USER/supercompressible}"
 
 export HYDRA_FULL_ERROR=1
 
