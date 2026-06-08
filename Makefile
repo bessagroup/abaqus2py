@@ -10,11 +10,11 @@ help:
 
 # Build targets
 build:
-	python -m build
+	uv build
 
 # Testing targets
 test:
-	pytest
+	uv run pytest -v -s
 
 # Linting and formatting targets
 lint:
@@ -22,4 +22,4 @@ lint:
 
 # Documentation targets
 docs:
-	mkdocs build
+	uv run mkdocs build
