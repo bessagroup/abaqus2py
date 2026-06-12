@@ -215,3 +215,7 @@ notebooks/
 site/
 
 outputs/
+
+# SLURM job output
+*.out
+*.err
