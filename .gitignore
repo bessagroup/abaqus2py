@@ -215,3 +215,32 @@ notebooks/
 site/
 
 outputs/
+
+# ABAQUS runtime artifacts
+#   Generated in the working directory whenever the `abaqus` CLI runs
+#   (replay, journal, recovery, lock, and per-job scratch/output files).
+abaqus.rpy
+abaqus.rpy.*
+abaqus*.rec
+*.rpy
+*.rpy.*
+*.rec
+*.jnl
+*.msg
+*.sta
+*.dat
+*.com
+*.prt
+*.sim
+*.lck
+*.res
+*.stt
+*.mdl
+*.ipm
+*.abq
+*.pac
+*.sel
+*.fil
+*.odb
+*.023
+logs/
