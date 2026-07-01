@@ -8,7 +8,7 @@ experimentdata:
   # from_file: ./example_design
 
   from_sampling:
-    sampler: latin
+    sampler: latin_sampler
     seed: 42
     n_samples: 1000
 
