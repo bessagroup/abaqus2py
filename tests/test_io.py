@@ -39,6 +39,38 @@ def test_write_sim_info_roundtrips(tmp_path: Path):
         assert pickle.load(f) == payload
 
 
+def test_write_sim_info_strips_numpy(tmp_path: Path):
+    """numpy arrays/scalars must be pickled as native Python types.
+
+    ABAQUS's bundled interpreter ships an older numpy that cannot unpickle
+    a NumPy>=2.0 array (``numpy._core`` reconstructor). ``write_sim_info``
+    therefore serialises native Python types and the on-disk pickle carries
+    no numpy reference at all.
+    """
+    np = pytest.importorskip("numpy")
+
+    payload = {
+        "max_disps": np.array([1.5, 2.5, 3.5]),
+        "imperfection": np.float64(0.01),
+        "n_longerons": np.int64(3),
+        "name": "riks",
+    }
+    write_sim_info(sim_info=payload, working_dir=tmp_path)
+
+    siminfo_path = tmp_path / f"{FILENAME_SIMINFO}.pkl"
+    raw = siminfo_path.read_bytes()
+    assert b"numpy" not in raw
+
+    loaded = pickle.loads(raw)
+
+    assert loaded["max_disps"] == [1.5, 2.5, 3.5]
+    assert isinstance(loaded["max_disps"], list)
+    assert loaded["max_disps"][1] == 2.5
+    assert isinstance(loaded["imperfection"], float)
+    assert isinstance(loaded["n_longerons"], int)
+    assert loaded["name"] == "riks"
+
+
 def test_create_preprocess_script_contents(tmp_path: Path):
     python_file = tmp_path / "module.py"
     create_preprocess_script(
