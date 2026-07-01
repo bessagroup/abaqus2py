@@ -78,9 +78,9 @@ def test_submit_single_file(recorded_abaqus, tmp_path: Path):
 
     assert len(recorded_abaqus["submit"]) == 1
     inp_arg, num_cpus = recorded_abaqus["submit"][0]
-    # The recorded value is what abaqus_submit was called with; the current
-    # implementation passes the file stem (Path/str).
-    assert str(inp_arg).endswith("job")
+    # _submit passes the full .inp path through to abaqus_submit, which
+    # derives the job name (stem) and working directory (parent) itself.
+    assert Path(inp_arg) == target
     assert num_cpus == 4
 
 
@@ -259,22 +259,19 @@ def test_delete_odb_removes_odb(recorded_abaqus, tmp_path: Path):
     assert not odb_file.exists()
 
 
-def test_submit_restores_cwd_on_exception(monkeypatch, tmp_path: Path):
-    """If abaqus_submit raises, _submit must still restore the cwd."""
-
-    def boom(inp_file, num_cpus):
-        raise RuntimeError("abaqus blew up")
-
-    monkeypatch.setattr(sim_mod, "abaqus_submit", boom)
-
+def test_submit_does_not_change_process_cwd(recorded_abaqus, tmp_path: Path):
+    """_submit routes the working directory through subprocess ``cwd=`` (see
+    abaqus_submit) rather than os.chdir, so the process cwd is never touched
+    and it forwards the full .inp path."""
     original = Path.cwd()
     inp = tmp_path / "job.inp"
     inp.write_text("** dummy")
 
-    with pytest.raises(RuntimeError):
-        sim_mod._submit(inp_file=inp, num_cpus=1, delete_temp_files=False)
+    sim_mod._submit(inp_file=inp, num_cpus=1, delete_temp_files=False)
 
     assert Path.cwd() == original
+    inp_arg, _ = recorded_abaqus["submit"][0]
+    assert Path(inp_arg) == inp
 
 
 def test_abaqus_call_uses_subprocess_list(monkeypatch, tmp_path: Path):
@@ -294,6 +291,9 @@ def test_abaqus_call_uses_subprocess_list(monkeypatch, tmp_path: Path):
     assert isinstance(recorded["cmd"], list)
     assert recorded["cmd"][0] == "abaqus"
     assert recorded["kwargs"].get("check") is True
+    # Must run in the script's directory so CAE's .rec/.rpy files land in the
+    # (writable) working directory, not the read-only job launch directory.
+    assert recorded["kwargs"].get("cwd") == tmp_path
 
 
 def test_abaqus_submit_uses_subprocess_list(monkeypatch, tmp_path: Path):
@@ -306,13 +306,17 @@ def test_abaqus_submit_uses_subprocess_list(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(sim_mod.subprocess, "run", fake_run)
 
-    sim_mod.abaqus_submit(inp_file=Path("job"), num_cpus=2)
+    sim_mod.abaqus_submit(inp_file=tmp_path / "job.inp", num_cpus=2)
 
     assert isinstance(recorded["cmd"], list)
     assert recorded["cmd"][0] == "abaqus"
+    # Submitted by job name (stem), not the full path or filename.
     assert "job=job" in recorded["cmd"]
     assert "cpus=2" in recorded["cmd"]
     assert recorded["kwargs"].get("check") is True
+    # Runs in the .inp's directory so job outputs land in the writable
+    # working directory, not the read-only launch directory.
+    assert recorded["kwargs"].get("cwd") == tmp_path
 
 
 def test_abaqus_call_retries_transient_license_error(

@@ -9,7 +9,6 @@ Abaqus Simulator
 from __future__ import annotations
 
 import logging
-import os
 import random
 import subprocess
 import sys
@@ -83,7 +82,9 @@ def _emit(stdout: Optional[str], stderr: Optional[str]) -> None:
         sys.stderr.flush()
 
 
-def _run_abaqus(cmd: list[str], *, description: str) -> None:
+def _run_abaqus(
+    cmd: list[str], *, description: str, cwd: Optional[Path] = None
+) -> None:
     """Run an ``abaqus`` command, retrying transient license failures.
 
     Runs ``cmd`` via :func:`subprocess.run` (capturing output so it can be
@@ -101,6 +102,12 @@ def _run_abaqus(cmd: list[str], *, description: str) -> None:
     description : str
         Human-readable label used in the retry log messages
         (e.g. ``"abaqus cae"``).
+    cwd : Path, optional
+        Working directory to run the command in. ``abaqus cae`` writes its
+        replay/recover files (``abaqus.rec``, ``abaqus.rpy``) into the cwd, so
+        this must point at a writable location (the per-simulation working
+        directory) rather than the -- possibly read-only -- job launch
+        directory. ``None`` inherits the current process cwd.
 
     Raises
     ------
@@ -111,7 +118,7 @@ def _run_abaqus(cmd: list[str], *, description: str) -> None:
     for attempt in range(ABAQUS_LICENSE_MAX_RETRIES + 1):
         try:
             result = subprocess.run(
-                cmd, check=True, capture_output=True, text=True
+                cmd, check=True, capture_output=True, text=True, cwd=cwd
             )
         except subprocess.CalledProcessError as error:
             _emit(error.stdout, error.stderr)
@@ -143,6 +150,11 @@ def abaqus_call(script: Path) -> None:
     """
     Call Abaqus with a python script
 
+    The command runs in ``script``'s own directory (the per-simulation
+    working directory), so the replay/recover files ``abaqus cae`` drops
+    (``abaqus.rec``, ``abaqus.rpy``) land there rather than in the -- possibly
+    read-only -- job launch directory.
+
     Parameters
     ----------
     script : Path
@@ -159,6 +171,7 @@ def abaqus_call(script: Path) -> None:
     _run_abaqus(
         ["abaqus", "cae", f"noGUI={script.with_suffix('.py')}", "-mesa"],
         description="abaqus cae",
+        cwd=script.parent,
     )
 
 
@@ -166,10 +179,15 @@ def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
     """
     Submit the simulation to Abaqus
 
+    The command runs in ``inp_file``'s own directory (the per-simulation
+    working directory) and submits by job name (``job=<stem>``), so Abaqus
+    resolves the ``.inp`` and writes all job outputs there rather than in the
+    -- possibly read-only -- job launch directory.
+
     Parameters
     ----------
     inp_file : Path
-        Path to the input file
+        Path to the input (``.inp``) file.
     num_cpus : int
         Number of CPUs to use for the simulation
 
@@ -182,8 +200,9 @@ def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
         once the retry budget is exhausted.
     """
     _run_abaqus(
-        ["abaqus", f"job={inp_file}", f"cpus={num_cpus}"],
+        ["abaqus", f"job={inp_file.stem}", f"cpus={num_cpus}"],
         description="abaqus job submission",
+        cwd=inp_file.parent,
     )
 
 
@@ -430,14 +449,9 @@ def _submit(inp_file: Path, num_cpus: int, delete_temp_files: bool) -> None:
 
     logger.debug(f"Submitting {inp_file.stem} in {inp_file.parent}")
 
-    # Save current working directory and always restore it, even if the
-    # submission raises, so the caller's cwd is never left changed.
-    cwd = Path.cwd()
-    try:
-        os.chdir(inp_file.parent)
-        abaqus_submit(inp_file=inp_file.stem, num_cpus=num_cpus)
-    finally:
-        os.chdir(cwd)
+    # abaqus_submit runs in inp_file's directory via subprocess `cwd=`; no
+    # process-wide os.chdir, so concurrent submissions can't race on cwd.
+    abaqus_submit(inp_file=inp_file, num_cpus=num_cpus)
 
     logger.debug(f"Submitted {inp_file.stem} in {inp_file.parent}")
 
