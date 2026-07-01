@@ -3,7 +3,6 @@ authors = [
   {email = "m.p.vanderschelling@tudelft.nl", name = "M.P. van der Schelling"}
 ]
 classifiers = [
-  "License :: OSI Approved :: BSD License",
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Information Technology",
@@ -19,7 +18,8 @@ dependencies = [
 ]
 description = "Abaqus to Python interface"
 keywords = ["abaqus", "python", "interface"]
-license = {text = "BSD-3-Clause"}
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 name = "abaqus2py"
 readme = "README.md"
 requires-python = ">=3.11"
