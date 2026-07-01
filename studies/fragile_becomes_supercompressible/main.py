@@ -285,7 +285,11 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                 dependency="afterok",
                 parallel=True,
                 resources=SlurmResources(
-                    time="00:30:00", mem="4G", cpus_per_task=1
+                    time="00:30:00",
+                    mem="4G",
+                    cpus_per_task=1,
+                    max_array_size=1100,
+                    max_concurrent=1000,
                 ),
                 kwargs={"pass_id": True},
             ),
@@ -303,7 +307,11 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                 dependency="afterok",
                 parallel=True,
                 resources=SlurmResources(
-                    time="01:00:00", mem="4G", cpus_per_task=1
+                    time="01:00:00",
+                    mem="4G",
+                    max_array_size=1100,
+                    max_concurrent=1000,
+                    cpus_per_task=1,
                 ),
                 kwargs={"pass_id": True},
             ),
