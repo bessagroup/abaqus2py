@@ -11,9 +11,17 @@ import pickle
 from collections.abc import Iterable
 from pathlib import Path
 from time import sleep, time
-from typing import Optional
+from typing import Any, Optional
 
 # Local
+
+# numpy is used by callers to build simulation parameters, but the ABAQUS
+# interpreter that later unpickles sim_info.pkl ships its own (older) numpy.
+# The import is soft so abaqus2py's IO layer keeps working without numpy.
+try:
+    import numpy as _np
+except ImportError:  # pragma: no cover - numpy is a normal dependency
+    _np = None
 
 
 #                                                          Authorship & Credits
@@ -35,9 +43,49 @@ DEFAULT_JOBNAME = "simulation"
 logger = logging.getLogger("abaqus2py")
 
 
+def _to_builtin(obj: Any) -> Any:
+    """Recursively convert numpy objects to native Python types.
+
+    ``sim_info.pkl`` is unpickled by ABAQUS's bundled Python interpreter,
+    which ships an older numpy. A numpy array/scalar pickled by NumPy >= 2.0
+    embeds a ``numpy._core`` reconstructor that older numpy cannot import
+    (``ImportError: No module named 'numpy._core'``). Converting arrays to
+    lists and numpy scalars to Python scalars makes the pickle carry no
+    numpy-specific (indeed no numpy) references, so it loads under any
+    interpreter.
+
+    Parameters
+    ----------
+    obj : Any
+        The object to convert. Dicts, lists and tuples are walked
+        recursively; numpy arrays/scalars are converted; anything else is
+        returned unchanged.
+
+    Returns
+    -------
+    Any
+        The object with all numpy arrays/scalars replaced by native Python
+        equivalents.
+    """
+    if isinstance(obj, dict):
+        return {key: _to_builtin(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_to_builtin(value) for value in obj)
+    if _np is not None:
+        if isinstance(obj, _np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, _np.generic):
+            return obj.item()
+    return obj
+
+
 def write_sim_info(sim_info: dict, working_dir: Path) -> None:
     """
     Write the simulation information to a pickle file.
+
+    numpy arrays and scalars in ``sim_info`` are first converted to native
+    Python types (see :func:`_to_builtin`) so the pickle can be read by
+    ABAQUS's bundled interpreter regardless of its numpy version.
 
     Parameters
     ----------
@@ -48,7 +96,7 @@ def write_sim_info(sim_info: dict, working_dir: Path) -> None:
     """
     filename = working_dir / Path(FILENAME_SIMINFO).with_suffix(".pkl")
     with open(filename, "wb") as fp:
-        pickle.dump(sim_info, fp, protocol=0)
+        pickle.dump(_to_builtin(sim_info), fp, protocol=0)
 
 
 def create_preprocess_script(
