@@ -1,5 +1,5 @@
 defaults:
-  - 7d_domain
+  - 3d_domain
   - cluster: local
   - override hydra/job_logging: custom
   - _self_
@@ -10,7 +10,7 @@ experimentdata:
   from_sampling:
     sampler: latin
     seed: 42
-    n_samples: 50000
+    n_samples: 1000
 
 imperfection:
   mean: -2.705021452041446
