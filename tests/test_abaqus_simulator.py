@@ -313,3 +313,70 @@ def test_abaqus_submit_uses_subprocess_list(monkeypatch, tmp_path: Path):
     assert "job=job" in recorded["cmd"]
     assert "cpus=2" in recorded["cmd"]
     assert recorded["kwargs"].get("check") is True
+
+
+def test_abaqus_call_retries_transient_license_error(
+    monkeypatch, tmp_path: Path
+):
+    """A transient license failure is retried and then succeeds."""
+    calls = {"n": 0}
+
+    def flaky_run(cmd, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise subprocess.CalledProcessError(
+                1,
+                cmd,
+                stderr="ERROR 1A000060: Unable to connect to server",
+            )
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", flaky_run)
+    monkeypatch.setattr(sim_mod.time, "sleep", lambda _: None)
+
+    # Should not raise: the third attempt succeeds.
+    sim_mod.abaqus_call(tmp_path / "preprocess")
+    assert calls["n"] == 3
+
+
+def test_abaqus_call_raises_after_exhausting_license_retries(
+    monkeypatch, tmp_path: Path
+):
+    """A persistent license failure raises once the retry budget is spent."""
+    calls = {"n": 0}
+
+    def always_license_error(cmd, **kwargs):
+        calls["n"] += 1
+        raise subprocess.CalledProcessError(
+            1, cmd, stderr="Failed to startup licensing (err01): 1A000060"
+        )
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", always_license_error)
+    monkeypatch.setattr(sim_mod.time, "sleep", lambda _: None)
+    monkeypatch.setattr(sim_mod, "ABAQUS_LICENSE_MAX_RETRIES", 2)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        sim_mod.abaqus_call(tmp_path / "preprocess")
+    assert calls["n"] == 3  # 1 initial attempt + 2 retries
+
+
+def test_abaqus_call_does_not_retry_analysis_error(
+    monkeypatch, tmp_path: Path
+):
+    """A non-license failure surfaces immediately, without retrying."""
+    calls = {"n": 0}
+    slept: list[float] = []
+
+    def analysis_error(cmd, **kwargs):
+        calls["n"] += 1
+        raise subprocess.CalledProcessError(
+            1, cmd, stderr="Abaqus/CAE Kernel exited with an error"
+        )
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", analysis_error)
+    monkeypatch.setattr(sim_mod.time, "sleep", lambda s: slept.append(s))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        sim_mod.abaqus_call(tmp_path / "preprocess")
+    assert calls["n"] == 1
+    assert slept == []

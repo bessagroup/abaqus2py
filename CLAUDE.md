@@ -98,3 +98,17 @@ pattern.
   pre/submit/post step).
 - Source files carry a Bessa-group authorship/credits header block; match it
   when adding modules.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `bessagroup/abaqus2py` (via the `gh` CLI); external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role vocabulary (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`); `wontfix` already exists as a GitHub label, the other four are created on first use. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.

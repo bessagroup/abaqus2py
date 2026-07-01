@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import subprocess
+import sys
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +47,97 @@ logger = logging.getLogger("abaqus2py")
 # without completing. Used to fail fast instead of waiting for the timeout.
 ABAQUS_FAILURE_MARKERS = ("THE ANALYSIS HAS NOT BEEN COMPLETED",)
 
+# Signatures of a *transient* DSLS licensing failure: Abaqus could not reach or
+# check out from the license server (server briefly down, a network hiccup, or
+# the shared token pool momentarily saturated). Abaqus prints one of these to
+# stdout/stderr and exits non-zero. This is distinct from a genuine modelling
+# or analysis error, so a call that fails this way is safe to retry.
+ABAQUS_LICENSE_ERROR_MARKERS = (
+    "Failed to startup licensing",
+    "Unable to connect to server",
+    "1A000060",
+)
+
+# Retry policy for transient license failures (see ``_run_abaqus``). The
+# back-off is exponential with additive jitter so that a wide array of workers
+# that all hit a saturated license server do not retry in lockstep and re-flood
+# it. Tunable by overriding these module attributes.
+ABAQUS_LICENSE_MAX_RETRIES = 5
+ABAQUS_LICENSE_BACKOFF_BASE = 5.0  # seconds; first back-off ~= this value
+ABAQUS_LICENSE_BACKOFF_CAP = 60.0  # seconds; ceiling on the exponential term
+ABAQUS_LICENSE_BACKOFF_JITTER = 5.0  # seconds; max random addition per retry
+
+
+def _emit(stdout: Optional[str], stderr: Optional[str]) -> None:
+    """Re-emit captured subprocess output to the parent std streams.
+
+    ``_run_abaqus`` captures Abaqus' output so it can inspect it for a license
+    signature; this forwards it on (stdout to stdout, stderr to stderr) so it
+    still lands in the job log exactly as if it had never been captured.
+    """
+    if stdout:
+        sys.stdout.write(stdout)
+        sys.stdout.flush()
+    if stderr:
+        sys.stderr.write(stderr)
+        sys.stderr.flush()
+
+
+def _run_abaqus(cmd: list[str], *, description: str) -> None:
+    """Run an ``abaqus`` command, retrying transient license failures.
+
+    Runs ``cmd`` via :func:`subprocess.run` (capturing output so it can be
+    inspected, then re-emitting it via :func:`_emit` so nothing is lost from
+    the job log). On a non-zero exit whose output carries an
+    :data:`ABAQUS_LICENSE_ERROR_MARKERS` signature, the command is retried up
+    to :data:`ABAQUS_LICENSE_MAX_RETRIES` times with exponential back-off and
+    jitter. Any other failure is raised immediately, so genuine modelling or
+    analysis errors still surface without delay.
+
+    Parameters
+    ----------
+    cmd : list[str]
+        The ``abaqus`` command and its arguments (passed without a shell).
+    description : str
+        Human-readable label used in the retry log messages
+        (e.g. ``"abaqus cae"``).
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If the command fails for a non-license reason, or still fails with a
+        license error after the retry budget is exhausted.
+    """
+    for attempt in range(ABAQUS_LICENSE_MAX_RETRIES + 1):
+        try:
+            result = subprocess.run(
+                cmd, check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as error:
+            _emit(error.stdout, error.stderr)
+            output = f"{error.stdout or ''}\n{error.stderr or ''}"
+            is_license_error = any(
+                marker in output for marker in ABAQUS_LICENSE_ERROR_MARKERS
+            )
+            if not is_license_error or attempt == ABAQUS_LICENSE_MAX_RETRIES:
+                raise
+            delay = min(
+                ABAQUS_LICENSE_BACKOFF_CAP,
+                ABAQUS_LICENSE_BACKOFF_BASE * 2**attempt,
+            ) + random.uniform(0.0, ABAQUS_LICENSE_BACKOFF_JITTER)
+            logger.warning(
+                "%s could not obtain an Abaqus license (attempt %d/%d); "
+                "retrying in %.1fs.",
+                description,
+                attempt + 1,
+                ABAQUS_LICENSE_MAX_RETRIES + 1,
+                delay,
+            )
+            time.sleep(delay)
+        else:
+            _emit(result.stdout, result.stderr)
+            return
+
 
 def abaqus_call(script: Path) -> None:
     """
@@ -57,11 +151,14 @@ def abaqus_call(script: Path) -> None:
     Raises
     ------
     subprocess.CalledProcessError
-        If the ``abaqus`` command exits with a non-zero status.
+        If the ``abaqus`` command exits with a non-zero status. Transient
+        license-connection failures are retried first (see
+        :func:`_run_abaqus`); this is only raised for a genuine failure or
+        once the retry budget is exhausted.
     """
-    subprocess.run(
+    _run_abaqus(
         ["abaqus", "cae", f"noGUI={script.with_suffix('.py')}", "-mesa"],
-        check=True,
+        description="abaqus cae",
     )
 
 
@@ -79,11 +176,14 @@ def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
     Raises
     ------
     subprocess.CalledProcessError
-        If the ``abaqus`` command exits with a non-zero status.
+        If the ``abaqus`` command exits with a non-zero status. Transient
+        license-connection failures are retried first (see
+        :func:`_run_abaqus`); this is only raised for a genuine failure or
+        once the retry budget is exhausted.
     """
-    subprocess.run(
+    _run_abaqus(
         ["abaqus", f"job={inp_file}", f"cpus={num_cpus}"],
-        check=True,
+        description="abaqus job submission",
     )
 
 

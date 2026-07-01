@@ -289,7 +289,13 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                     mem="4G",
                     cpus_per_task=1,
                     max_array_size=1100,
-                    max_concurrent=1000,
+                    # Each task's pre-/post-processing runs `abaqus cae`, which
+                    # checks out a QAE token. Brown's shared DSLS pool has only
+                    # 32 QAE tokens (`abaqus licensing dslsstat -usage`), so a
+                    # wider array just stalls in the license queue (or trips
+                    # connection timeouts at saturation). Cap below 32 to leave
+                    # headroom for the pre/post overlap and other users.
+                    max_concurrent=24,
                 ),
                 kwargs={"pass_id": True},
             ),
@@ -310,7 +316,10 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                     time="01:00:00",
                     mem="4G",
                     max_array_size=1100,
-                    max_concurrent=1000,
+                    # Capped by the 32-token QAE (`abaqus cae`) pool, as in
+                    # lin_buckle above; the Riks solve's SRU tokens are not the
+                    # limiter (24 x 15 = 360 < 768 available).
+                    max_concurrent=24,
                     cpus_per_task=1,
                 ),
                 kwargs={"pass_id": True},
