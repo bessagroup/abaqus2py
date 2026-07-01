@@ -66,7 +66,7 @@ $\frac{d}{D_1}$	|`ratio_d`
 |-------------|-------------|
 | `main.py` | `f3dasm` Pipeline script that runs the experiment |
 | `config.yaml` | Configuration file for the experiment |
-| `cluster/` | Hydra config group selecting `local` (in-process) or `slurm` execution |
+| `cluster/` | Hydra config group selecting the execution backend: `local` (in-process), or the `brown` / `brown_mbessa` SLURM configs for Brown's Oscar cluster |
 | `run_slurm.sh` | `sbatch` launcher that submits the pipeline to SLURM |
 | `README.md` | Explanation of this experiment |
 | `img/` | Folder with images used in this file |
@@ -89,8 +89,8 @@ This study is built on the `f3dasm` [`Pipeline`](https://f3dasm.readthedocs.io/e
 
 ### Running the experiment on a SLURM cluster
 
-1. Edit `cluster/slurm.yaml` to match your cluster (partition, account, and the `env_setup` module loads your ABAQUS install needs).
-2. Submit with `sbatch run_slurm.sh` (which runs `uv run main.py cluster=slurm ++mode=slurm ++rootdir=...`), or directly: `uv run main.py cluster=slurm ++mode=slurm ++rootdir=/path/to/scratch`.
+1. Pick the cluster config that matches your allocation, or edit one to match your cluster (partition, account, and the `env_setup` module loads your ABAQUS install needs). The shipped configs target Brown's Oscar cluster: `cluster/brown.yaml` (general `default` allocation) and `cluster/brown_mbessa.yaml` (the `mbessa-condo` condo allocation); both load the Bessa-group ABAQUS build with `module load abaqus/2024-mbessa-pskx`.
+2. Submit with `sbatch run_slurm.sh` (which runs `uv run main.py cluster=brown_mbessa ++mode=slurm ++rootdir=...`), or directly: `uv run main.py cluster=brown ++mode=slurm ++rootdir=/path/to/scratch`.
 
 
 ## Results
@@ -245,7 +245,7 @@ When `from_sampling` is set, the design domain is taken from `config.domain` (th
 | rootdir | `str` or `null` | Root directory under which the pipeline creates its run folder. `null` uses the current directory. |
 
 ### cluster
-The `cluster` config group (`cluster/local.yaml`, `cluster/slurm.yaml`) selects the execution backend. When `cluster.enabled` is `true`, the remaining `cluster.*` keys (`partition`, `account`, `runner`, `env_setup`, `env_vars`) are passed to [`f3dasm.SlurmCluster`](https://f3dasm.readthedocs.io/en/latest/) to generate the SLURM scripts. Select with e.g. `cluster=slurm`.
+The `cluster` config group (`cluster/local.yaml`, `cluster/brown.yaml`, `cluster/brown_mbessa.yaml`) selects the execution backend. When `cluster.enabled` is `true`, the remaining `cluster.*` keys (`partition`, `account`, `runner`, `env_setup`, `env_vars`) are passed to [`f3dasm.SlurmCluster`](https://f3dasm.readthedocs.io/en/latest/) to generate the SLURM scripts. The two Brown configs differ only by `account` (`default` vs `mbessa-condo`) and both load `module load abaqus/2024-mbessa-pskx` via `env_setup`. Select with e.g. `cluster=brown_mbessa`.
 
 ### imperfection
 

@@ -14,11 +14,12 @@
 #   sbatch run_slurm.sh [hydra_overrides...]
 #
 # Launches a single low-resource orchestrator job that runs:
-#   uv run main.py cluster=slurm ++mode=slurm ++rootdir=$ROOTDIR <overrides>
+#   uv run main.py cluster=brown_mbessa ++mode=slurm ++rootdir=$ROOTDIR <overrides>
 # f3dasm's orchestrator then submits each pipeline step (and the parallel
 # lin_buckle / riks array jobs) itself. Extra Hydra overrides are forwarded,
 # e.g.:
 #   sbatch run_slurm.sh ++scripts_dir=/path/to/abaqus2py/scripts
+#   sbatch run_slurm.sh cluster=brown           # general 'default' allocation
 
 # Oscar (Brown) per-user scratch is /oscar/scratch/$USER -- NOT /scratch/$USER.
 ROOTDIR="${ROOTDIR:-/oscar/scratch/$USER/supercompressible}"
@@ -31,4 +32,4 @@ echo " Root dir: $ROOTDIR"
 echo " Overrides: $*"
 echo "======================================="
 
-uv run main.py cluster=slurm ++mode=slurm ++rootdir="$ROOTDIR" "$@"
+uv run main.py cluster=brown_mbessa ++mode=slurm ++rootdir="$ROOTDIR" "$@"

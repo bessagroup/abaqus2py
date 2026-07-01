@@ -1,0 +1,32 @@
+# @package _global_
+
+# Submit the pipeline to Brown's Oscar SLURM cluster. f3dasm generates a
+# self-resubmitting orchestrator that submits one step (or loop iteration) at a
+# time, fanning the parallel `lin_buckle` / `riks` steps out as SLURM array
+# jobs.
+#
+# Every `cluster.*` key (except `enabled`) is passed verbatim to
+# f3dasm.SlurmCluster.from_yaml. The `env_setup` commands run before each
+# worker command: `module load abaqus/2024-mbessa-pskx` is the Bessa-group
+# ABAQUS build on Oscar, required for the `abaqus` CLI the simulators shell out
+# to. (Do NOT `unset LD_LIBRARY_PATH` here -- unlike the JAX-based siblings,
+# ABAQUS relies on the library paths its module load sets up.)
+#
+# This uses the general `default` allocation; see `brown_mbessa.yaml` for the
+# mbessa-condo condo allocation.
+cluster:
+  enabled: true
+  partition: batch
+  account: default
+  runner: uv run
+  env_setup:
+    - module load abaqus/2024-mbessa-pskx
+  env_vars:
+    HYDRA_FULL_ERROR: "1"
+    # Overarching worker log level (from the global `log_level` key), applied
+    # to the root logger in f3dasm's run_step entry point so workers match the
+    # driver level.
+    F3DASM_LOG_LEVEL: ${log_level}
+hydra:
+  job:
+    chdir: false

@@ -32,7 +32,8 @@ scripts:
   riks_post: ${scripts_dir}/supercompressible_riks_pp.py
 
 # Execution mode of the pipeline: "local" or "slurm". Overridden to "slurm"
-# by run_slurm.sh / when selecting cluster=slurm on an HPC system.
+# by run_slurm.sh / when selecting a SLURM cluster (e.g. cluster=brown_mbessa)
+# on an HPC system.
 mode: local
 
 # Root directory for pipeline run folders; null uses the current directory.
