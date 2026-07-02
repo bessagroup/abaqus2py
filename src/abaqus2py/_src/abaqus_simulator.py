@@ -26,6 +26,7 @@ from .io import (
     FILENAME_SIMINFO,
     create_postprocess_script,
     create_preprocess_script,
+    find_marker_lines,
     remove_temporary_files,
     wait_until_text_verification,
     write_sim_info,
@@ -45,6 +46,15 @@ logger = logging.getLogger("abaqus2py")
 # Markers Abaqus writes to its message file when an analysis terminates
 # without completing. Used to fail fast instead of waiting for the timeout.
 ABAQUS_FAILURE_MARKERS = ("THE ANALYSIS HAS NOT BEEN COMPLETED",)
+
+# Marker of a solver error line in the Abaqus message file. An analysis can
+# reach its JOB TIME SUMMARY (i.e. "complete") and still have failed -- e.g. a
+# *BUCKLE step whose eigensolver hits its iteration cap writes ***ERROR to the
+# .msg, finishes, and leaves an .odb without mode frames that then breaks
+# post-processing with an unrelated-looking error. After the completion wait,
+# ``run`` scans the .msg for this marker and raises with the actual solver
+# message instead. Set to ``None`` (module attribute) to disable the scan.
+ABAQUS_SOLVER_ERROR_MARKER: Optional[str] = "***ERROR"
 
 # Signatures of a *transient* DSLS licensing failure: Abaqus could not reach or
 # check out from the license server (server briefly down, a network hiccup, or
@@ -206,6 +216,44 @@ def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
     )
 
 
+def abaqus_terminate(job_name: str, working_dir: Path) -> None:
+    """Best-effort ``abaqus terminate`` of a running job.
+
+    ``abaqus job=...`` is fire-and-forget: the solver runs detached, so when
+    a completion wait times out the analysis is still running -- holding
+    license tokens, writing files, and leaving a ``.lck`` behind. This asks
+    Abaqus to stop it. Failures are logged, never raised: termination is
+    cleanup on an already-failing path and must not mask the original
+    ``TimeoutError``.
+
+    Parameters
+    ----------
+    job_name : str
+        Name of the Abaqus job to terminate (the ``.inp`` stem).
+    working_dir : Path
+        The job's working directory; ``abaqus terminate`` resolves the job
+        by name relative to its cwd.
+    """
+    try:
+        result = subprocess.run(
+            ["abaqus", "terminate", f"job={job_name}"],
+            capture_output=True,
+            text=True,
+            cwd=working_dir,
+        )
+        _emit(result.stdout, result.stderr)
+        if result.returncode != 0:
+            logger.warning(
+                "Could not terminate Abaqus job %s (exit status %d)",
+                job_name,
+                result.returncode,
+            )
+    except OSError as error:
+        logger.warning(
+            "Could not terminate Abaqus job %s: %s", job_name, error
+        )
+
+
 def _resolve_name(sim_params: dict[str, Any], index: int) -> str:
     """Return the sub-directory name for a single simulation.
 
@@ -236,8 +284,18 @@ class AbaqusSimulator:
         Working directory where subdirectories will be created
         for simulation results. Defaults to the current working directory.
     max_waiting_time : int
-        Maximum time to wait in seconds after submitting a job, default is 60.
-        This is a workaround to wait for the job to finish.
+        Maximum total time to wait in seconds after submitting a job, default
+        is 60. This is a workaround to wait for the job to finish. When
+        ``max_stall_time`` is set, this ceiling only guards against runaway
+        jobs and can be set generously (e.g. the scheduler's walltime).
+    max_stall_time : int, optional
+        Maximum time in seconds to tolerate the job's working directory
+        showing no file activity while waiting for completion. A running
+        solver continuously updates its output files, so a stall means the
+        job died; a slow-but-alive job keeps the wait going up to
+        ``max_waiting_time``. ``None`` (default) disables stall detection and
+        makes ``max_waiting_time`` the only limit -- which conflates "slow"
+        with "dead" and kills healthy long-running jobs.
     """
 
     num_cpus: int = 1
@@ -245,6 +303,7 @@ class AbaqusSimulator:
     delete_temp_files: bool = False
     working_directory: Path = field(default_factory=Path.cwd)
     max_waiting_time: int = 60
+    max_stall_time: Optional[int] = None
 
     def __post_init__(self) -> None:
         """
@@ -377,6 +436,21 @@ class AbaqusSimulator:
             Name of the post-processing function to call. Defaults to
             ``function_name`` when not given, so the pre- and post-processing
             scripts may use different entry-point names.
+
+        Raises
+        ------
+        TimeoutError
+            If the job does not finish within ``max_waiting_time`` seconds,
+            or -- when ``max_stall_time`` is set -- if its working directory
+            shows no file activity for ``max_stall_time`` seconds. The
+            (possibly still running) job is terminated via
+            :func:`abaqus_terminate` before the error propagates.
+        RuntimeError
+            If Abaqus reports the analysis failed (see
+            :data:`ABAQUS_FAILURE_MARKERS`), or if the completed job's
+            ``.msg`` file contains solver error lines (see
+            :data:`ABAQUS_SOLVER_ERROR_MARKER`); the error lines are included
+            in the message. Raised before post-processing is attempted.
         """
 
         # Create an empty dictionary if no simulation parameters are given
@@ -411,21 +485,51 @@ class AbaqusSimulator:
                     delete_temp_files=self.delete_temp_files,
                 )
 
-                wait_until_text_verification(
-                    working_dir=self.working_directory / name,
-                    file_extension=".log",
-                    text="Begin Analysis Input File Processor",
-                    max_waiting_time=self.max_waiting_time,
-                )
+                job_dir = self.working_directory / name
+                try:
+                    # No stall detection here: before the job starts, license
+                    # queueing legitimately produces long silences.
+                    wait_until_text_verification(
+                        working_dir=job_dir,
+                        file_extension=".log",
+                        text="Begin Analysis Input File Processor",
+                        max_waiting_time=self.max_waiting_time,
+                    )
 
-                # Workaround to wait for the job to finish
-                wait_until_text_verification(
-                    working_dir=self.working_directory / name,
-                    file_extension=".msg",
-                    text="JOB TIME SUMMARY",
-                    max_waiting_time=self.max_waiting_time,
-                    failure_texts=ABAQUS_FAILURE_MARKERS,
-                )
+                    # Workaround to wait for the job to finish
+                    wait_until_text_verification(
+                        working_dir=job_dir,
+                        file_extension=".msg",
+                        text="JOB TIME SUMMARY",
+                        max_waiting_time=self.max_waiting_time,
+                        failure_texts=ABAQUS_FAILURE_MARKERS,
+                        stall_timeout=self.max_stall_time,
+                    )
+                except TimeoutError:
+                    # The detached solver is likely still running; stop it so
+                    # it does not keep holding license tokens and leave a
+                    # .lck that blocks re-running the job in this directory.
+                    abaqus_terminate(
+                        job_name=inp_file.stem, working_dir=job_dir
+                    )
+                    raise
+
+                # An analysis can reach JOB TIME SUMMARY and still have
+                # failed (e.g. an eigensolver iteration cap); its .odb is
+                # then incomplete and post-processing would fail with a
+                # misleading error. Surface the solver's own message instead.
+                if ABAQUS_SOLVER_ERROR_MARKER:
+                    solver_errors = find_marker_lines(
+                        working_dir=job_dir,
+                        file_extension=".msg",
+                        marker=ABAQUS_SOLVER_ERROR_MARKER,
+                    )
+                    if solver_errors:
+                        raise RuntimeError(
+                            f"Abaqus job {inp_file.stem} completed with "
+                            f"solver errors in its .msg file: "
+                            f"{'; '.join(solver_errors)}"
+                        )
 
                 if post_py_file is not None:
                     _postprocess(

@@ -16,7 +16,10 @@ Pipeline steps
                      the Riks stage fans out over all designs again.
 4. ``riks``       -- run the Riks analysis per design (parallel); the Riks
                      pre-processing consumes the buckling odb from each
-                     design's ``lin_buckle/`` sub-directory.
+                     design's ``lin_buckle/`` sub-directory. Only coilable
+                     designs are simulated: samples whose buckling stage
+                     produced ``coilable = 0`` (or no result at all) are
+                     skipped and keep empty Riks outputs.
 5. ``post``       -- collect the Riks results into the final ExperimentData.
 """
 
@@ -102,6 +105,23 @@ def log_normal_sampler(
 # =============================================================================
 
 
+def _gate_is_open(value) -> bool:
+    """Return whether a gate output allows a stage to run.
+
+    ``None`` (column missing), NaN (upstream stage failed, so the sample has
+    no value) and falsy values (``0``, ``0.0``, ``False``) all close the
+    gate; anything else opens it.
+    """
+    if value is None:
+        return False
+    try:
+        if np.isnan(value):
+            return False
+    except TypeError:
+        pass
+    return bool(value)
+
+
 class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
     """:class:`F3DASMAbaqusSimulator` that writes into a per-run sub-directory.
 
@@ -113,11 +133,23 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
     pipeline machinery while landing the ``lin_buckle/`` and ``riks/`` result
     trees under the pipeline's job directory in both local and SLURM modes.
 
+    A stage can be gated on an upstream result: with ``gate_key`` set, the
+    simulation only runs when that key in the sample's data is present,
+    non-NaN and truthy; otherwise the sample is returned untouched (the job
+    is marked finished with empty outputs for this stage). This both skips
+    physically meaningless runs (a Riks analysis of a non-coilable design)
+    and stops upstream failures from cascading into confusing downstream
+    errors (a sample whose buckling stage failed has no ``coilable`` value,
+    so the gate stays closed).
+
     Parameters
     ----------
     subdir : str
         Sub-directory of ``experiment_sample.project_dir`` to run in
         (``"lin_buckle"`` or ``"riks"``).
+    gate_key : str, optional
+        Name of a scalar in the sample's data that must be present, non-NaN
+        and truthy for the simulation to run. ``None`` (default) always runs.
     **kwargs
         Forwarded verbatim to :class:`F3DASMAbaqusSimulator`.
 
@@ -125,11 +157,14 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
     ----------
     subdir : str
         The per-stage sub-directory name.
+    gate_key : str or None
+        The gating key, or None when the stage is ungated.
     """
 
-    def __init__(self, subdir: str, **kwargs):
+    def __init__(self, subdir: str, gate_key: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.subdir = subdir
+        self.gate_key = gate_key
 
     def execute(
         self,
@@ -138,6 +173,10 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
         **kwargs,
     ) -> ExperimentSample:
         """Point the simulator at ``project_dir/subdir`` and run.
+
+        When ``gate_key`` is set and the sample's value for it is missing,
+        NaN or falsy, the simulation is skipped and the sample is returned
+        unchanged.
 
         Parameters
         ----------
@@ -152,8 +191,14 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
         Returns
         -------
         ExperimentSample
-            The sample with its simulation outputs stored.
+            The sample with its simulation outputs stored, or the untouched
+            sample when the gate is closed.
         """
+        if self.gate_key is not None and not _gate_is_open(
+            experiment_sample.to_dict().get(self.gate_key)
+        ):
+            return experiment_sample
+
         working_directory = Path(experiment_sample.project_dir) / self.subdir
         working_directory.mkdir(parents=True, exist_ok=True)
         self.simulator.working_directory = working_directory
@@ -255,17 +300,29 @@ def build_pipeline(config: DictConfig) -> Pipeline:
     Pipeline
         The configured five-step pipeline.
     """
+    # max_waiting_time only guards against runaway jobs and is sized to the
+    # stage's SLURM walltime; max_stall_time is what catches dead jobs (a
+    # healthy solve updates its .msg/.sta every increment, i.e. every few
+    # seconds). Do NOT size max_waiting_time to the expected solve time: the
+    # 1782918718 run capped the Riks wait at 120 s while healthy solves took
+    # 15-119 s (median 43 s), which killed the slowest ~13% of the designs
+    # mid-solve.
     simulator_lin_buckle = StagedAbaqusSimulator(
         subdir="lin_buckle",
         py_file=config.scripts.lin_buckle_pre,
         post_py_file=config.scripts.lin_buckle_post,
-        max_waiting_time=60,
+        max_waiting_time=600,
+        max_stall_time=60,
     )
     simulator_riks = StagedAbaqusSimulator(
         subdir="riks",
         py_file=config.scripts.riks_pre,
         post_py_file=config.scripts.riks_post,
-        max_waiting_time=120,
+        max_waiting_time=3600,
+        max_stall_time=120,
+        # A Riks analysis is only meaningful for coilable designs; the gate
+        # also skips samples whose buckling stage failed (coilable is NaN).
+        gate_key="coilable",
     )
 
     return Pipeline(

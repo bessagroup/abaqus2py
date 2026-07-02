@@ -60,7 +60,13 @@ class F3DASMAbaqusSimulator(DataGenerator):
         the current working directory.
     max_waiting_time : int, optional
         Maximum waiting time (seconds) for the Abaqus job to finish, by
-        default 60.
+        default 60. When ``max_stall_time`` is set, this only bounds the
+        total runtime and can be set generously.
+    max_stall_time : int, optional
+        Maximum time (seconds) to tolerate the job's working directory
+        showing no file activity while waiting for completion; a stalled job
+        is terminated and reported. ``None`` (default) disables stall
+        detection. See :class:`AbaqusSimulator`.
 
     Attributes
     ----------
@@ -93,12 +99,14 @@ class F3DASMAbaqusSimulator(DataGenerator):
         working_directory: Optional[str] = None,
         max_waiting_time: int = 60,
         post_function_name: Optional[str] = None,
+        max_stall_time: Optional[int] = None,
     ):
         simulator_kwargs: dict[str, Any] = {
             "num_cpus": num_cpus,
             "delete_odb": delete_odb,
             "delete_temp_files": delete_temp_files,
             "max_waiting_time": max_waiting_time,
+            "max_stall_time": max_stall_time,
         }
         if working_directory is not None:
             simulator_kwargs["working_directory"] = Path(working_directory)

@@ -392,8 +392,20 @@ def main(dict):
     # from now on, there's differences between linear buckle and riks
 
     # create step
+    # The default subspace iteration budget (maxIterations=30) fails to
+    # converge all 20 requested modes for ~1% of designs; Abaqus then errors
+    # out and writes an odb without any mode frames. Only mode 1 is consumed
+    # downstream (imperfection seeding and max_disps[1]), but numEigen stays
+    # at 20 so the stored loads/max_disps arrays keep their shape across
+    # datasets; the larger iteration budget makes the high modes converge.
     step_name = "BUCKLE_STEP"
-    model.BuckleStep(step_name, numEigen=20, previous="Initial", minEigen=0.0)
+    model.BuckleStep(
+        step_name,
+        numEigen=20,
+        previous="Initial",
+        minEigen=0.0,
+        maxIterations=300,
+    )
 
     # set bcs (displacement)
     region_name = "Z{}_REF_POINT".format(ref_point_positions[0])

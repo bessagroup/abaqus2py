@@ -53,6 +53,15 @@ re-exports from there). Three modules, each a layer:
      detected by **polling a result file for a marker string** (e.g.
      `"JOB TIME SUMMARY"` in the `.msg` file), with a `max_waiting_time`
      timeout. This is the "workaround" referenced throughout the code.
+     An optional `stall_timeout` separates "slow but alive" from "dead":
+     it fails only when *no* file in the working directory changes for that
+     long, so `max_waiting_time` can be set generously (e.g. the SLURM
+     walltime) without hanging on silently dead jobs. On either timeout the
+     simulator calls `abaqus terminate` so the detached solver does not keep
+     holding license tokens; after a successful wait it scans the `.msg` for
+     `***ERROR` lines and raises them (an analysis can reach its
+     `JOB TIME SUMMARY` and still have failed, leaving an `.odb` that breaks
+     post-processing with a misleading error).
    - Module-level filename constants (`FILENAME_PREPROCESS = "preprocess"`,
      etc.) define the on-disk contract between layers.
 

@@ -384,3 +384,113 @@ def test_abaqus_call_does_not_retry_analysis_error(
         sim_mod.abaqus_call(tmp_path / "preprocess")
     assert calls["n"] == 1
     assert slept == []
+
+
+@pytest.fixture
+def submitted_run(monkeypatch, tmp_path: Path):
+    """Stub the abaqus hooks for a full ``run`` and record invocations.
+
+    ``fake_submit`` mimics a solver according to ``behavior["msg_content"]``:
+    it writes a ``.log`` that has started and a ``.msg`` with the given
+    content, so the two completion waits in ``run`` see real files.
+    """
+    calls = {"call": [], "terminate": [], "msg_content": "JOB TIME SUMMARY"}
+
+    def fake_call(script: Path) -> None:
+        calls["call"].append(Path(script))
+        if script.stem == FILENAME_PREPROCESS:
+            (script.parent / "job.inp").write_text("** dummy inp")
+
+    def fake_submit(inp_file: Path, num_cpus: int) -> None:
+        (inp_file.parent / "job.log").write_text(
+            "Begin Analysis Input File Processor"
+        )
+        (inp_file.parent / "job.msg").write_text(calls["msg_content"])
+
+    def fake_terminate(job_name: str, working_dir: Path) -> None:
+        calls["terminate"].append((job_name, Path(working_dir)))
+
+    monkeypatch.setattr(sim_mod, "abaqus_call", fake_call)
+    monkeypatch.setattr(sim_mod, "abaqus_submit", fake_submit)
+    monkeypatch.setattr(sim_mod, "abaqus_terminate", fake_terminate)
+    return calls
+
+
+def test_run_terminates_job_on_timeout(submitted_run, tmp_path: Path):
+    """A completion-wait timeout must terminate the (still running) job so it
+    does not keep holding license tokens, then re-raise."""
+    submitted_run["msg_content"] = "solver still going, no summary"
+
+    sim = AbaqusSimulator(working_directory=tmp_path, max_waiting_time=1)
+    with pytest.raises(TimeoutError):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            simulation_parameters={"name": "job_t"},
+        )
+
+    assert submitted_run["terminate"] == [("job", tmp_path / "job_t")]
+
+
+def test_run_terminates_job_on_stall(submitted_run, tmp_path: Path):
+    """With ``max_stall_time`` set, a dead job fails on the stall clock well
+    before a generous ``max_waiting_time`` and is terminated."""
+    submitted_run["msg_content"] = "solver still going, no summary"
+
+    sim = AbaqusSimulator(
+        working_directory=tmp_path, max_waiting_time=60, max_stall_time=1
+    )
+    with pytest.raises(TimeoutError, match="appears dead"):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            simulation_parameters={"name": "job_s"},
+        )
+
+    assert submitted_run["terminate"] == [("job", tmp_path / "job_s")]
+
+
+def test_run_raises_on_solver_error_lines(submitted_run, tmp_path: Path):
+    """An analysis that reaches JOB TIME SUMMARY but wrote ***ERROR lines
+    must fail with the solver's message, before post-processing runs."""
+    submitted_run["msg_content"] = (
+        " ***ERROR: INCREASE THE NUMBER OF ITERATIONS TO GET THE REQUESTED\n"
+        "JOB TIME SUMMARY\n"
+    )
+
+    sim = AbaqusSimulator(working_directory=tmp_path, max_waiting_time=5)
+    with pytest.raises(RuntimeError, match="INCREASE THE NUMBER"):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            post_py_file=str(tmp_path / "post_script.py"),
+            simulation_parameters={"name": "job_e"},
+        )
+
+    # Only the preprocess CAE call ran; the post script was never invoked.
+    assert len(submitted_run["call"]) == 1
+    assert submitted_run["terminate"] == []
+
+
+def test_run_clean_job_reaches_postprocess(submitted_run, tmp_path: Path):
+    """A clean .msg (summary, no error lines) proceeds to post-processing."""
+    sim = AbaqusSimulator(
+        working_directory=tmp_path, max_waiting_time=5, max_stall_time=5
+    )
+    sim.run(
+        py_file=str(tmp_path / "user_script.py"),
+        post_py_file=str(tmp_path / "post_script.py"),
+        simulation_parameters={"name": "job_ok"},
+    )
+
+    assert len(submitted_run["call"]) == 2  # preprocess + postprocess
+    assert submitted_run["terminate"] == []
+
+
+def test_abaqus_terminate_never_raises(monkeypatch, tmp_path: Path):
+    """Termination is best-effort cleanup on an already-failing path; a
+    missing abaqus binary or non-zero exit must not mask the original error.
+    """
+
+    def missing_binary(cmd, **kwargs):
+        raise FileNotFoundError("abaqus not found")
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", missing_binary)
+    sim_mod.abaqus_terminate(job_name="job", working_dir=tmp_path)

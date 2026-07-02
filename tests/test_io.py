@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+import threading
 import time
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from abaqus2py._src.io import (
     FILENAME_SIMINFO,
     create_postprocess_script,
     create_preprocess_script,
+    find_marker_lines,
     remove_temporary_files,
     wait_until_text_verification,
     write_sim_info,
@@ -193,6 +195,81 @@ def test_wait_until_text_verification_failure_marker(tmp_path: Path):
             max_waiting_time=5,
             failure_texts=["THE ANALYSIS HAS NOT BEEN COMPLETED"],
         )
+
+
+def test_wait_until_text_verification_stall_raises_before_ceiling(
+    tmp_path: Path,
+):
+    # Nothing in the directory ever changes: the stall timeout must fire
+    # well before the (generous) max_waiting_time ceiling.
+    (tmp_path / "job.msg").write_text("solver output, no summary yet")
+
+    start = time.monotonic()
+    with pytest.raises(TimeoutError, match="appears dead"):
+        wait_until_text_verification(
+            working_dir=tmp_path,
+            file_extension=".msg",
+            text="JOB TIME SUMMARY",
+            max_waiting_time=60,
+            stall_timeout=1,
+        )
+    assert time.monotonic() - start < 10
+
+
+def test_wait_until_text_verification_progress_extends_wait(tmp_path: Path):
+    # A slow-but-alive job keeps appending to its files; with a stall
+    # timeout shorter than the total runtime the wait must still succeed,
+    # because every append resets the stall clock.
+    target = tmp_path / "job.msg"
+    target.write_text("increment 0\n")
+
+    def writer():
+        for i in range(3):
+            time.sleep(0.8)
+            with open(target, "a") as fp:
+                fp.write(f"increment {i + 1}\n")
+        with open(target, "a") as fp:
+            fp.write("JOB TIME SUMMARY\n")
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    try:
+        wait_until_text_verification(
+            working_dir=tmp_path,
+            file_extension=".msg",
+            text="JOB TIME SUMMARY",
+            max_waiting_time=30,
+            stall_timeout=2,
+        )
+    finally:
+        thread.join()
+
+
+def test_find_marker_lines_collects_and_strips(tmp_path: Path):
+    (tmp_path / "job.msg").write_text(
+        "increment 1\n"
+        " ***ERROR: INCREASE THE NUMBER OF ITERATIONS TO GET THE REQUESTED\n"
+        "           NUMBER OF EIGENVALUES\n"
+        "analysis summary\n"
+    )
+
+    lines = find_marker_lines(
+        working_dir=tmp_path, file_extension=".msg", marker="***ERROR"
+    )
+    assert lines == [
+        "***ERROR: INCREASE THE NUMBER OF ITERATIONS TO GET THE REQUESTED"
+    ]
+
+
+def test_find_marker_lines_empty_when_clean(tmp_path: Path):
+    (tmp_path / "job.msg").write_text("increment 1\nJOB TIME SUMMARY\n")
+
+    assert (
+        find_marker_lines(
+            working_dir=tmp_path, file_extension=".msg", marker="***ERROR"
+        )
+        == []
+    )
 
 
 def test_create_preprocess_script_handles_quote_in_path(tmp_path: Path):

@@ -212,12 +212,33 @@ def remove_temporary_files(
                 file.unlink()
 
 
+def _directory_snapshot(working_dir: Path) -> dict[str, tuple[int, float]]:
+    """Return ``{filename: (size, mtime)}`` for every file in a directory.
+
+    Used as the progress signal for stall detection: a running job keeps
+    writing to files in its working directory, so an unchanged snapshot
+    between polls means no sign of life. Files that disappear between the
+    listing and the ``stat`` call (e.g. temporary files a job cleans up) are
+    skipped.
+    """
+    snapshot: dict[str, tuple[int, float]] = {}
+    for path in working_dir.iterdir():
+        try:
+            if path.is_file():
+                stat = path.stat()
+                snapshot[path.name] = (stat.st_size, stat.st_mtime)
+        except OSError:
+            continue
+    return snapshot
+
+
 def wait_until_text_verification(
     working_dir: Path,
     file_extension: str,
     text: str,
     max_waiting_time: int,
     failure_texts: Optional[Iterable[str]] = None,
+    stall_timeout: Optional[float] = None,
 ) -> None:
     """Poll a directory for a file containing a target text.
 
@@ -226,6 +247,14 @@ def wait_until_text_verification(
     until ``max_waiting_time`` elapses. If ``failure_texts`` is given and any
     of those markers is found in a matching file, the call fails fast with a
     ``RuntimeError`` instead of waiting for the timeout.
+
+    When ``stall_timeout`` is given, the wait additionally watches *all*
+    files in ``working_dir`` for signs of life (size/mtime changes) and fails
+    as soon as nothing has changed for ``stall_timeout`` seconds. This
+    separates "the job is slow but alive" (allowed, up to
+    ``max_waiting_time``) from "the job is dead" (fails after
+    ``stall_timeout``), so ``max_waiting_time`` can be set generously without
+    hanging on jobs that died silently.
 
     Parameters
     ----------
@@ -237,22 +266,33 @@ def wait_until_text_verification(
     text : str
         Substring that must be present in a file for the call to succeed.
     max_waiting_time : int
-        Maximum time to wait, in seconds.
+        Maximum total time to wait, in seconds.
     failure_texts : Iterable of str, optional
         Substrings that signal the Abaqus job failed. If any is found in a
         matching file, a ``RuntimeError`` is raised immediately. ``None``
         (default) disables failure detection.
+    stall_timeout : float, optional
+        Maximum time, in seconds, to tolerate *no* file in ``working_dir``
+        changing before giving up. ``None`` (default) disables stall
+        detection, leaving ``max_waiting_time`` as the only limit.
 
     Raises
     ------
     RuntimeError
         If one of ``failure_texts`` is found in a matching file.
     TimeoutError
-        If the expected text is not found within ``max_waiting_time`` seconds.
+        If the expected text is not found within ``max_waiting_time``
+        seconds, or -- when ``stall_timeout`` is set -- if no file in
+        ``working_dir`` changed for ``stall_timeout`` seconds.
     """
     failure_texts = list(failure_texts) if failure_texts is not None else []
     start_time = time()
     logger.debug(f"Start time: {start_time}")
+
+    last_progress_time = start_time
+    last_snapshot = (
+        _directory_snapshot(working_dir) if stall_timeout is not None else None
+    )
 
     while time() - start_time < max_waiting_time:
         logger.debug(
@@ -260,10 +300,6 @@ def wait_until_text_verification(
             f"({time() - start_time} < {max_waiting_time})"
         )
         matches = list(working_dir.glob(f"*{file_extension}"))
-        if not matches:
-            logger.debug(f"no {file_extension} file found")
-            sleep(1)
-            continue
 
         for filename in matches:
             logger.debug(f"found {filename} file!")
@@ -279,6 +315,18 @@ def wait_until_text_verification(
                 logger.debug(f"found {text} in {filename}!")
                 return
 
+        if stall_timeout is not None:
+            snapshot = _directory_snapshot(working_dir)
+            if snapshot != last_snapshot:
+                last_snapshot = snapshot
+                last_progress_time = time()
+            elif time() - last_progress_time > stall_timeout:
+                raise TimeoutError(
+                    f"No file in {working_dir} showed progress for "
+                    f"{stall_timeout} seconds while waiting for {text} "
+                    f"in {file_extension} file; the job appears dead"
+                )
+
         sleep(1)
 
     raise TimeoutError(
@@ -286,3 +334,36 @@ def wait_until_text_verification(
         f"({working_dir}) within "
         f"{max_waiting_time} seconds"
     )
+
+
+def find_marker_lines(
+    working_dir: Path, file_extension: str, marker: str
+) -> list[str]:
+    """Collect lines containing a marker from files matching an extension.
+
+    Scans every ``*{file_extension}`` file in ``working_dir`` and returns the
+    stripped lines that contain ``marker``, in file order. Used to surface
+    solver error messages (e.g. ``***ERROR`` lines in an Abaqus ``.msg``
+    file) after a job nominally completed.
+
+    Parameters
+    ----------
+    working_dir : Path
+        Directory in which to look for matching files.
+    file_extension : str
+        File extension used to find matching files (e.g. ``".msg"``).
+    marker : str
+        Substring identifying the lines to collect.
+
+    Returns
+    -------
+    list of str
+        The stripped matching lines; empty if no file matches or no line
+        contains the marker.
+    """
+    lines: list[str] = []
+    for filename in sorted(working_dir.glob(f"*{file_extension}")):
+        for line in filename.read_text().splitlines():
+            if marker in line:
+                lines.append(line.strip())
+    return lines

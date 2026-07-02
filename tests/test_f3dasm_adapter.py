@@ -65,6 +65,19 @@ def test_working_directory_none_defaults_to_cwd(tmp_path, monkeypatch):
     assert adapter.simulator.working_directory == Path(tmp_path)
 
 
+def test_timeout_settings_forwarded_to_simulator():
+    adapter = F3DASMAbaqusSimulator(
+        py_file="pre.py", max_waiting_time=3600, max_stall_time=120
+    )
+    assert adapter.simulator.max_waiting_time == 3600
+    assert adapter.simulator.max_stall_time == 120
+
+
+def test_max_stall_time_defaults_to_disabled():
+    adapter = F3DASMAbaqusSimulator(py_file="pre.py")
+    assert adapter.simulator.max_stall_time is None
+
+
 def test_execute_uses_id_as_name(tmp_path: Path):
     adapter = _build_adapter(tmp_path, {"y": 42.0, "label": "ok"})
 
