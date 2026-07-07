@@ -53,8 +53,25 @@ ABAQUS_FAILURE_MARKERS = ("THE ANALYSIS HAS NOT BEEN COMPLETED",)
 # .msg, finishes, and leaves an .odb without mode frames that then breaks
 # post-processing with an unrelated-looking error. After the completion wait,
 # ``run`` scans the .msg for this marker and raises with the actual solver
-# message instead. Set to ``None`` (module attribute) to disable the scan.
+# message -- except for the benign subset below. Set to ``None`` (module
+# attribute) to disable the scan.
 ABAQUS_SOLVER_ERROR_MARKER: Optional[str] = "***ERROR"
+
+# A subset of ***ERROR lines that do NOT invalidate the .odb. A *STATIC, RIKS
+# (or general *STATIC) step that walks into a limit / snap-through point
+# exhausts its arc-length / time-increment budget and Abaqus terminates with
+# these messages -- but every increment written up to that point is complete
+# and physically meaningful (capturing that instability is the whole point of
+# a Riks analysis). Unlike a *BUCKLE eigensolver iteration cap, these leave a
+# usable .odb, so they must not block post-processing. The "TERMINATED DUE TO
+# PREVIOUS ERRORS" line is only ever a consequence of an earlier ***ERROR, so
+# it is benign on its own; a genuine fatal error still writes its own
+# (non-benign) ***ERROR line and is caught in ``run``.
+ABAQUS_BENIGN_SOLVER_ERRORS: tuple[str, ...] = (
+    "TIME INCREMENT REQUIRED IS LESS THAN THE MINIMUM SPECIFIED",
+    "TOO MANY ATTEMPTS MADE FOR THIS INCREMENT",
+    "THE ANALYSIS HAS BEEN TERMINATED DUE TO PREVIOUS ERRORS",
+)
 
 # Signatures of a *transient* DSLS licensing failure: Abaqus could not reach or
 # check out from the license server (server briefly down, a network hiccup, or
@@ -451,6 +468,10 @@ class AbaqusSimulator:
             ``.msg`` file contains solver error lines (see
             :data:`ABAQUS_SOLVER_ERROR_MARKER`); the error lines are included
             in the message. Raised before post-processing is attempted.
+            The benign termination lines in
+            :data:`ABAQUS_BENIGN_SOLVER_ERRORS` (a Riks limit-point stop)
+            are exempt: they are logged as a warning and the job proceeds
+            to post-processing.
         """
 
         # Create an empty dictionary if no simulation parameters are given
@@ -518,17 +539,36 @@ class AbaqusSimulator:
                 # failed (e.g. an eigensolver iteration cap); its .odb is
                 # then incomplete and post-processing would fail with a
                 # misleading error. Surface the solver's own message instead.
+                # Known-benign termination lines (a Riks limit-point stop,
+                # see ABAQUS_BENIGN_SOLVER_ERRORS) leave a usable .odb and
+                # are filtered out; they only log a warning.
                 if ABAQUS_SOLVER_ERROR_MARKER:
                     solver_errors = find_marker_lines(
                         working_dir=job_dir,
                         file_extension=".msg",
                         marker=ABAQUS_SOLVER_ERROR_MARKER,
                     )
-                    if solver_errors:
+                    fatal_errors = [
+                        line
+                        for line in solver_errors
+                        if not any(
+                            benign in line
+                            for benign in ABAQUS_BENIGN_SOLVER_ERRORS
+                        )
+                    ]
+                    if fatal_errors:
                         raise RuntimeError(
                             f"Abaqus job {inp_file.stem} completed with "
                             f"solver errors in its .msg file: "
-                            f"{'; '.join(solver_errors)}"
+                            f"{'; '.join(fatal_errors)}"
+                        )
+                    if solver_errors:
+                        logger.warning(
+                            "Abaqus job %s terminated early with non-fatal "
+                            "solver errors; post-processing partial "
+                            "results: %s",
+                            inp_file.stem,
+                            "; ".join(solver_errors),
                         )
 
                 if post_py_file is not None:
