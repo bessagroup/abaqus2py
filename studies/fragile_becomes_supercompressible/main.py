@@ -20,7 +20,12 @@ Pipeline steps
                      designs are simulated: samples whose buckling stage
                      produced ``coilable = 0`` (or no result at all) are
                      skipped and keep empty Riks outputs.
-5. ``post``       -- collect the Riks results into the final ExperimentData.
+5. ``post``       -- collect the Riks results into the ExperimentData.
+6. ``get_results`` -- re-open every job and derive the scalar quantities
+                     of interest (``sigma_crit``, ``energy`` and the
+                     3-class ``coilable`` label) from the collected raw
+                     fields; pure NumPy/SciPy, run as a sequential
+                     sweep (see ``post_processing.py``).
 """
 
 #                                                                       Modules
@@ -48,7 +53,9 @@ from f3dasm import (
 )
 from f3dasm.design import Domain
 from omegaconf import DictConfig
+from post_processing import SupercompressiblePostProcessor
 
+# Local
 from abaqus2py import F3DASMAbaqusSimulator
 
 f3dasm_logger = logging.getLogger("f3dasm")
@@ -206,12 +213,15 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
 
 
 class MarkAllOpen(Block):
-    """Re-open every job so the next parallel step fans out over all designs.
+    """Re-open every job so the next DataGenerator visits all designs.
 
-    A ``parallel`` :class:`~f3dasm.Step` derives its array size from the
-    number of *open* jobs on disk. After the buckling stage finishes, all
-    jobs are ``finished``; this block resets them to ``open`` before the Riks
-    stage. It replaces the legacy inline ``data.mark_all("open")`` call.
+    Every :class:`~f3dasm.DataGenerator` evaluation mode pulls work from
+    the pool of *open* jobs (a ``parallel`` :class:`~f3dasm.Step` also
+    derives its array size from it). After a stage finishes, all jobs
+    are ``finished``; this block resets them to ``open`` before the next
+    stage that needs them -- the Riks simulator in the ``reset`` step
+    and the scalar post-processor in the ``get_results`` step. It
+    replaces the legacy inline ``data.mark_all("open")`` call.
     """
 
     def call(self, data: ExperimentData, **kwargs) -> ExperimentData:
@@ -298,7 +308,7 @@ def build_pipeline(config: DictConfig) -> Pipeline:
     Returns
     -------
     Pipeline
-        The configured five-step pipeline.
+        The configured six-step pipeline.
     """
     # max_waiting_time only guards against runaway jobs and is sized to the
     # stage's SLURM walltime; max_stall_time is what catches dead jobs (a
@@ -323,6 +333,11 @@ def build_pipeline(config: DictConfig) -> Pipeline:
         # A Riks analysis is only meaningful for coilable designs; the gate
         # also skips samples whose buckling stage failed (coilable is NaN).
         gate_key="coilable",
+    )
+    post_processor = SupercompressiblePostProcessor(
+        max_strain=config.get_results.max_strain,
+        additional_strain_thresh=config.get_results.additional_strain_thresh,
+        n_interpolation=config.get_results.n_interpolation,
     )
 
     return Pipeline(
@@ -387,6 +402,19 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                 dependency="afterany",
                 resources=SlurmResources(
                     time="00:10:00", mem="2G", cpus_per_task=1
+                ),
+            ),
+            Step(
+                name="get_results",
+                # A DataGenerator only visits open jobs, and after the
+                # collect step every job is finished -- re-open them
+                # first, as in the reset step. The chained DataGenerator
+                # then runs sequentially in-process (mode default): the
+                # sweep is pure NumPy/SciPy, so no SLURM array is needed.
+                block=MarkAllOpen() >> post_processor,
+                dependency="afterok",
+                resources=SlurmResources(
+                    time="00:20:00", mem="4G", cpus_per_task=1
                 ),
             ),
         ],
