@@ -469,6 +469,57 @@ def test_run_raises_on_solver_error_lines(submitted_run, tmp_path: Path):
     assert submitted_run["terminate"] == []
 
 
+def test_run_postprocesses_benign_riks_termination(
+    submitted_run, tmp_path: Path
+):
+    """A Riks limit-point stop writes ***ERROR lines but leaves a usable
+    .odb; the run must proceed to post-processing instead of raising."""
+    submitted_run["msg_content"] = (
+        " ***ERROR: TIME INCREMENT REQUIRED IS LESS THAN THE MINIMUM "
+        "SPECIFIED\n"
+        " ***ERROR: THE ANALYSIS HAS BEEN TERMINATED DUE TO PREVIOUS "
+        "ERRORS\n"
+        "JOB TIME SUMMARY\n"
+    )
+
+    sim = AbaqusSimulator(
+        working_directory=tmp_path, max_waiting_time=5, max_stall_time=5
+    )
+    sim.run(
+        py_file=str(tmp_path / "user_script.py"),
+        post_py_file=str(tmp_path / "post_script.py"),
+        simulation_parameters={"name": "job_riks"},
+    )
+
+    assert len(submitted_run["call"]) == 2  # preprocess + postprocess ran
+    assert submitted_run["terminate"] == []
+
+
+def test_run_raises_on_fatal_error_mixed_with_benign(
+    submitted_run, tmp_path: Path
+):
+    """A genuine fatal ***ERROR is still fatal even alongside a benign
+    termination line, and post-processing must not run."""
+    submitted_run["msg_content"] = (
+        " ***ERROR: INCREASE THE NUMBER OF ITERATIONS TO GET THE "
+        "REQUESTED\n"
+        " ***ERROR: THE ANALYSIS HAS BEEN TERMINATED DUE TO PREVIOUS "
+        "ERRORS\n"
+        "JOB TIME SUMMARY\n"
+    )
+
+    sim = AbaqusSimulator(working_directory=tmp_path, max_waiting_time=5)
+    with pytest.raises(RuntimeError, match="INCREASE THE NUMBER"):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            post_py_file=str(tmp_path / "post_script.py"),
+            simulation_parameters={"name": "job_mixed"},
+        )
+
+    assert len(submitted_run["call"]) == 1  # postprocess never ran
+    assert submitted_run["terminate"] == []
+
+
 def test_run_clean_job_reaches_postprocess(submitted_run, tmp_path: Path):
     """A clean .msg (summary, no error lines) proceeds to post-processing."""
     sim = AbaqusSimulator(

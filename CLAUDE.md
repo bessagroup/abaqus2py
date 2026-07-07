@@ -61,7 +61,10 @@ re-exports from there). Three modules, each a layer:
      holding license tokens; after a successful wait it scans the `.msg` for
      `***ERROR` lines and raises them (an analysis can reach its
      `JOB TIME SUMMARY` and still have failed, leaving an `.odb` that breaks
-     post-processing with a misleading error).
+     post-processing with a misleading error). Known-benign Riks
+     limit-point termination lines (`ABAQUS_BENIGN_SOLVER_ERRORS`) are
+     exempt: they leave a usable `.odb`, so they are logged as a warning
+     and the job is post-processed.
    - Module-level filename constants (`FILENAME_PREPROCESS = "preprocess"`,
      etc.) define the on-disk contract between layers.
 
