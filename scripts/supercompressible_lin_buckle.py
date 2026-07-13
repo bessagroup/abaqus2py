@@ -213,17 +213,21 @@ def main(dict):
     part_longerons.Set(name=name, vertices=all_vertices)
 
     # create beam section
-    # create section material
-    material_name = "LONGERON_MATERIAL"
-    nu = young_modulus / (2 * shear_modulus) - 1
-    abaqusMaterial = model.Material(name=material_name)
-    abaqusMaterial.Elastic(type=ISOTROPIC, table=((young_modulus, nu),))
-
-    # create profile
     profile_name = "LONGERONS_PROFILE"
     section_name = "LONGERONS_SECTION"
 
     if circular:
+        # create section material (isotropic; nu back-computed from G/E).
+        # Only valid for the 3D case, where ratio_shear_modulus is fixed to a
+        # value giving nu < 0.5. Must NOT be created in the 7D branch: there
+        # the generalized beam section supplies E and G independently and does
+        # not use this material, but Abaqus still validates the (invalid,
+        # nu >= 0.5) material block at input-processing time and aborts.
+        material_name = "LONGERON_MATERIAL"
+        nu = young_modulus / (2 * shear_modulus) - 1
+        abaqusMaterial = model.Material(name=material_name)
+        abaqusMaterial.Elastic(type=ISOTROPIC, table=((young_modulus, nu),))
+
         r = d / 2.0
         model.CircularProfile(name=profile_name, r=r)
         model.BeamSection(
