@@ -9,8 +9,10 @@ Abaqus Simulator
 from __future__ import annotations
 
 import logging
-import os
+import random
 import subprocess
+import sys
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +26,7 @@ from .io import (
     FILENAME_SIMINFO,
     create_postprocess_script,
     create_preprocess_script,
+    find_marker_lines,
     remove_temporary_files,
     wait_until_text_verification,
     write_sim_info,
@@ -44,10 +47,140 @@ logger = logging.getLogger("abaqus2py")
 # without completing. Used to fail fast instead of waiting for the timeout.
 ABAQUS_FAILURE_MARKERS = ("THE ANALYSIS HAS NOT BEEN COMPLETED",)
 
+# Marker of a solver error line in the Abaqus message file. An analysis can
+# reach its JOB TIME SUMMARY (i.e. "complete") and still have failed -- e.g. a
+# *BUCKLE step whose eigensolver hits its iteration cap writes ***ERROR to the
+# .msg, finishes, and leaves an .odb without mode frames that then breaks
+# post-processing with an unrelated-looking error. After the completion wait,
+# ``run`` scans the .msg for this marker and raises with the actual solver
+# message -- except for the benign subset below. Set to ``None`` (module
+# attribute) to disable the scan.
+ABAQUS_SOLVER_ERROR_MARKER: Optional[str] = "***ERROR"
+
+# A subset of ***ERROR lines that do NOT invalidate the .odb. A *STATIC, RIKS
+# (or general *STATIC) step that walks into a limit / snap-through point
+# exhausts its arc-length / time-increment budget and Abaqus terminates with
+# these messages -- but every increment written up to that point is complete
+# and physically meaningful (capturing that instability is the whole point of
+# a Riks analysis). Unlike a *BUCKLE eigensolver iteration cap, these leave a
+# usable .odb, so they must not block post-processing. The "TERMINATED DUE TO
+# PREVIOUS ERRORS" line is only ever a consequence of an earlier ***ERROR, so
+# it is benign on its own; a genuine fatal error still writes its own
+# (non-benign) ***ERROR line and is caught in ``run``.
+ABAQUS_BENIGN_SOLVER_ERRORS: tuple[str, ...] = (
+    "TIME INCREMENT REQUIRED IS LESS THAN THE MINIMUM SPECIFIED",
+    "TOO MANY ATTEMPTS MADE FOR THIS INCREMENT",
+    "THE ANALYSIS HAS BEEN TERMINATED DUE TO PREVIOUS ERRORS",
+)
+
+# Signatures of a *transient* DSLS licensing failure: Abaqus could not reach or
+# check out from the license server (server briefly down, a network hiccup, or
+# the shared token pool momentarily saturated). Abaqus prints one of these to
+# stdout/stderr and exits non-zero. This is distinct from a genuine modelling
+# or analysis error, so a call that fails this way is safe to retry.
+ABAQUS_LICENSE_ERROR_MARKERS = (
+    "Failed to startup licensing",
+    "Unable to connect to server",
+    "1A000060",
+)
+
+# Retry policy for transient license failures (see ``_run_abaqus``). The
+# back-off is exponential with additive jitter so that a wide array of workers
+# that all hit a saturated license server do not retry in lockstep and re-flood
+# it. Tunable by overriding these module attributes.
+ABAQUS_LICENSE_MAX_RETRIES = 5
+ABAQUS_LICENSE_BACKOFF_BASE = 5.0  # seconds; first back-off ~= this value
+ABAQUS_LICENSE_BACKOFF_CAP = 60.0  # seconds; ceiling on the exponential term
+ABAQUS_LICENSE_BACKOFF_JITTER = 5.0  # seconds; max random addition per retry
+
+
+def _emit(stdout: Optional[str], stderr: Optional[str]) -> None:
+    """Re-emit captured subprocess output to the parent std streams.
+
+    ``_run_abaqus`` captures Abaqus' output so it can inspect it for a license
+    signature; this forwards it on (stdout to stdout, stderr to stderr) so it
+    still lands in the job log exactly as if it had never been captured.
+    """
+    if stdout:
+        sys.stdout.write(stdout)
+        sys.stdout.flush()
+    if stderr:
+        sys.stderr.write(stderr)
+        sys.stderr.flush()
+
+
+def _run_abaqus(
+    cmd: list[str], *, description: str, cwd: Optional[Path] = None
+) -> None:
+    """Run an ``abaqus`` command, retrying transient license failures.
+
+    Runs ``cmd`` via :func:`subprocess.run` (capturing output so it can be
+    inspected, then re-emitting it via :func:`_emit` so nothing is lost from
+    the job log). On a non-zero exit whose output carries an
+    :data:`ABAQUS_LICENSE_ERROR_MARKERS` signature, the command is retried up
+    to :data:`ABAQUS_LICENSE_MAX_RETRIES` times with exponential back-off and
+    jitter. Any other failure is raised immediately, so genuine modelling or
+    analysis errors still surface without delay.
+
+    Parameters
+    ----------
+    cmd : list[str]
+        The ``abaqus`` command and its arguments (passed without a shell).
+    description : str
+        Human-readable label used in the retry log messages
+        (e.g. ``"abaqus cae"``).
+    cwd : Path, optional
+        Working directory to run the command in. ``abaqus cae`` writes its
+        replay/recover files (``abaqus.rec``, ``abaqus.rpy``) into the cwd, so
+        this must point at a writable location (the per-simulation working
+        directory) rather than the -- possibly read-only -- job launch
+        directory. ``None`` inherits the current process cwd.
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If the command fails for a non-license reason, or still fails with a
+        license error after the retry budget is exhausted.
+    """
+    for attempt in range(ABAQUS_LICENSE_MAX_RETRIES + 1):
+        try:
+            result = subprocess.run(
+                cmd, check=True, capture_output=True, text=True, cwd=cwd
+            )
+        except subprocess.CalledProcessError as error:
+            _emit(error.stdout, error.stderr)
+            output = f"{error.stdout or ''}\n{error.stderr or ''}"
+            is_license_error = any(
+                marker in output for marker in ABAQUS_LICENSE_ERROR_MARKERS
+            )
+            if not is_license_error or attempt == ABAQUS_LICENSE_MAX_RETRIES:
+                raise
+            delay = min(
+                ABAQUS_LICENSE_BACKOFF_CAP,
+                ABAQUS_LICENSE_BACKOFF_BASE * 2**attempt,
+            ) + random.uniform(0.0, ABAQUS_LICENSE_BACKOFF_JITTER)
+            logger.warning(
+                "%s could not obtain an Abaqus license (attempt %d/%d); "
+                "retrying in %.1fs.",
+                description,
+                attempt + 1,
+                ABAQUS_LICENSE_MAX_RETRIES + 1,
+                delay,
+            )
+            time.sleep(delay)
+        else:
+            _emit(result.stdout, result.stderr)
+            return
+
 
 def abaqus_call(script: Path) -> None:
     """
     Call Abaqus with a python script
+
+    The command runs in ``script``'s own directory (the per-simulation
+    working directory), so the replay/recover files ``abaqus cae`` drops
+    (``abaqus.rec``, ``abaqus.rpy``) land there rather than in the -- possibly
+    read-only -- job launch directory.
 
     Parameters
     ----------
@@ -57,11 +190,15 @@ def abaqus_call(script: Path) -> None:
     Raises
     ------
     subprocess.CalledProcessError
-        If the ``abaqus`` command exits with a non-zero status.
+        If the ``abaqus`` command exits with a non-zero status. Transient
+        license-connection failures are retried first (see
+        :func:`_run_abaqus`); this is only raised for a genuine failure or
+        once the retry budget is exhausted.
     """
-    subprocess.run(
+    _run_abaqus(
         ["abaqus", "cae", f"noGUI={script.with_suffix('.py')}", "-mesa"],
-        check=True,
+        description="abaqus cae",
+        cwd=script.parent,
     )
 
 
@@ -69,22 +206,69 @@ def abaqus_submit(inp_file: Path, num_cpus: int) -> None:
     """
     Submit the simulation to Abaqus
 
+    The command runs in ``inp_file``'s own directory (the per-simulation
+    working directory) and submits by job name (``job=<stem>``), so Abaqus
+    resolves the ``.inp`` and writes all job outputs there rather than in the
+    -- possibly read-only -- job launch directory.
+
     Parameters
     ----------
     inp_file : Path
-        Path to the input file
+        Path to the input (``.inp``) file.
     num_cpus : int
         Number of CPUs to use for the simulation
 
     Raises
     ------
     subprocess.CalledProcessError
-        If the ``abaqus`` command exits with a non-zero status.
+        If the ``abaqus`` command exits with a non-zero status. Transient
+        license-connection failures are retried first (see
+        :func:`_run_abaqus`); this is only raised for a genuine failure or
+        once the retry budget is exhausted.
     """
-    subprocess.run(
-        ["abaqus", f"job={inp_file}", f"cpus={num_cpus}"],
-        check=True,
+    _run_abaqus(
+        ["abaqus", f"job={inp_file.stem}", f"cpus={num_cpus}"],
+        description="abaqus job submission",
+        cwd=inp_file.parent,
     )
+
+
+def abaqus_terminate(job_name: str, working_dir: Path) -> None:
+    """Best-effort ``abaqus terminate`` of a running job.
+
+    ``abaqus job=...`` is fire-and-forget: the solver runs detached, so when
+    a completion wait times out the analysis is still running -- holding
+    license tokens, writing files, and leaving a ``.lck`` behind. This asks
+    Abaqus to stop it. Failures are logged, never raised: termination is
+    cleanup on an already-failing path and must not mask the original
+    ``TimeoutError``.
+
+    Parameters
+    ----------
+    job_name : str
+        Name of the Abaqus job to terminate (the ``.inp`` stem).
+    working_dir : Path
+        The job's working directory; ``abaqus terminate`` resolves the job
+        by name relative to its cwd.
+    """
+    try:
+        result = subprocess.run(
+            ["abaqus", "terminate", f"job={job_name}"],
+            capture_output=True,
+            text=True,
+            cwd=working_dir,
+        )
+        _emit(result.stdout, result.stderr)
+        if result.returncode != 0:
+            logger.warning(
+                "Could not terminate Abaqus job %s (exit status %d)",
+                job_name,
+                result.returncode,
+            )
+    except OSError as error:
+        logger.warning(
+            "Could not terminate Abaqus job %s: %s", job_name, error
+        )
 
 
 def _resolve_name(sim_params: dict[str, Any], index: int) -> str:
@@ -117,8 +301,18 @@ class AbaqusSimulator:
         Working directory where subdirectories will be created
         for simulation results. Defaults to the current working directory.
     max_waiting_time : int
-        Maximum time to wait in seconds after submitting a job, default is 60.
-        This is a workaround to wait for the job to finish.
+        Maximum total time to wait in seconds after submitting a job, default
+        is 60. This is a workaround to wait for the job to finish. When
+        ``max_stall_time`` is set, this ceiling only guards against runaway
+        jobs and can be set generously (e.g. the scheduler's walltime).
+    max_stall_time : int, optional
+        Maximum time in seconds to tolerate the job's working directory
+        showing no file activity while waiting for completion. A running
+        solver continuously updates its output files, so a stall means the
+        job died; a slow-but-alive job keeps the wait going up to
+        ``max_waiting_time``. ``None`` (default) disables stall detection and
+        makes ``max_waiting_time`` the only limit -- which conflates "slow"
+        with "dead" and kills healthy long-running jobs.
     """
 
     num_cpus: int = 1
@@ -126,6 +320,7 @@ class AbaqusSimulator:
     delete_temp_files: bool = False
     working_directory: Path = field(default_factory=Path.cwd)
     max_waiting_time: int = 60
+    max_stall_time: Optional[int] = None
 
     def __post_init__(self) -> None:
         """
@@ -258,6 +453,25 @@ class AbaqusSimulator:
             Name of the post-processing function to call. Defaults to
             ``function_name`` when not given, so the pre- and post-processing
             scripts may use different entry-point names.
+
+        Raises
+        ------
+        TimeoutError
+            If the job does not finish within ``max_waiting_time`` seconds,
+            or -- when ``max_stall_time`` is set -- if its working directory
+            shows no file activity for ``max_stall_time`` seconds. The
+            (possibly still running) job is terminated via
+            :func:`abaqus_terminate` before the error propagates.
+        RuntimeError
+            If Abaqus reports the analysis failed (see
+            :data:`ABAQUS_FAILURE_MARKERS`), or if the completed job's
+            ``.msg`` file contains solver error lines (see
+            :data:`ABAQUS_SOLVER_ERROR_MARKER`); the error lines are included
+            in the message. Raised before post-processing is attempted.
+            The benign termination lines in
+            :data:`ABAQUS_BENIGN_SOLVER_ERRORS` (a Riks limit-point stop)
+            are exempt: they are logged as a warning and the job proceeds
+            to post-processing.
         """
 
         # Create an empty dictionary if no simulation parameters are given
@@ -292,21 +506,70 @@ class AbaqusSimulator:
                     delete_temp_files=self.delete_temp_files,
                 )
 
-                wait_until_text_verification(
-                    working_dir=self.working_directory / name,
-                    file_extension=".log",
-                    text="Begin Analysis Input File Processor",
-                    max_waiting_time=self.max_waiting_time,
-                )
+                job_dir = self.working_directory / name
+                try:
+                    # No stall detection here: before the job starts, license
+                    # queueing legitimately produces long silences.
+                    wait_until_text_verification(
+                        working_dir=job_dir,
+                        file_extension=".log",
+                        text="Begin Analysis Input File Processor",
+                        max_waiting_time=self.max_waiting_time,
+                    )
 
-                # Workaround to wait for the job to finish
-                wait_until_text_verification(
-                    working_dir=self.working_directory / name,
-                    file_extension=".msg",
-                    text="JOB TIME SUMMARY",
-                    max_waiting_time=self.max_waiting_time,
-                    failure_texts=ABAQUS_FAILURE_MARKERS,
-                )
+                    # Workaround to wait for the job to finish
+                    wait_until_text_verification(
+                        working_dir=job_dir,
+                        file_extension=".msg",
+                        text="JOB TIME SUMMARY",
+                        max_waiting_time=self.max_waiting_time,
+                        failure_texts=ABAQUS_FAILURE_MARKERS,
+                        stall_timeout=self.max_stall_time,
+                    )
+                except TimeoutError:
+                    # The detached solver is likely still running; stop it so
+                    # it does not keep holding license tokens and leave a
+                    # .lck that blocks re-running the job in this directory.
+                    abaqus_terminate(
+                        job_name=inp_file.stem, working_dir=job_dir
+                    )
+                    raise
+
+                # An analysis can reach JOB TIME SUMMARY and still have
+                # failed (e.g. an eigensolver iteration cap); its .odb is
+                # then incomplete and post-processing would fail with a
+                # misleading error. Surface the solver's own message instead.
+                # Known-benign termination lines (a Riks limit-point stop,
+                # see ABAQUS_BENIGN_SOLVER_ERRORS) leave a usable .odb and
+                # are filtered out; they only log a warning.
+                if ABAQUS_SOLVER_ERROR_MARKER:
+                    solver_errors = find_marker_lines(
+                        working_dir=job_dir,
+                        file_extension=".msg",
+                        marker=ABAQUS_SOLVER_ERROR_MARKER,
+                    )
+                    fatal_errors = [
+                        line
+                        for line in solver_errors
+                        if not any(
+                            benign in line
+                            for benign in ABAQUS_BENIGN_SOLVER_ERRORS
+                        )
+                    ]
+                    if fatal_errors:
+                        raise RuntimeError(
+                            f"Abaqus job {inp_file.stem} completed with "
+                            f"solver errors in its .msg file: "
+                            f"{'; '.join(fatal_errors)}"
+                        )
+                    if solver_errors:
+                        logger.warning(
+                            "Abaqus job %s terminated early with non-fatal "
+                            "solver errors; post-processing partial "
+                            "results: %s",
+                            inp_file.stem,
+                            "; ".join(solver_errors),
+                        )
 
                 if post_py_file is not None:
                     _postprocess(
@@ -330,14 +593,9 @@ def _submit(inp_file: Path, num_cpus: int, delete_temp_files: bool) -> None:
 
     logger.debug(f"Submitting {inp_file.stem} in {inp_file.parent}")
 
-    # Save current working directory and always restore it, even if the
-    # submission raises, so the caller's cwd is never left changed.
-    cwd = Path.cwd()
-    try:
-        os.chdir(inp_file.parent)
-        abaqus_submit(inp_file=inp_file.stem, num_cpus=num_cpus)
-    finally:
-        os.chdir(cwd)
+    # abaqus_submit runs in inp_file's directory via subprocess `cwd=`; no
+    # process-wide os.chdir, so concurrent submissions can't race on cwd.
+    abaqus_submit(inp_file=inp_file, num_cpus=num_cpus)
 
     logger.debug(f"Submitted {inp_file.stem} in {inp_file.parent}")
 

@@ -53,6 +53,18 @@ re-exports from there). Three modules, each a layer:
      detected by **polling a result file for a marker string** (e.g.
      `"JOB TIME SUMMARY"` in the `.msg` file), with a `max_waiting_time`
      timeout. This is the "workaround" referenced throughout the code.
+     An optional `stall_timeout` separates "slow but alive" from "dead":
+     it fails only when *no* file in the working directory changes for that
+     long, so `max_waiting_time` can be set generously (e.g. the SLURM
+     walltime) without hanging on silently dead jobs. On either timeout the
+     simulator calls `abaqus terminate` so the detached solver does not keep
+     holding license tokens; after a successful wait it scans the `.msg` for
+     `***ERROR` lines and raises them (an analysis can reach its
+     `JOB TIME SUMMARY` and still have failed, leaving an `.odb` that breaks
+     post-processing with a misleading error). Known-benign Riks
+     limit-point termination lines (`ABAQUS_BENIGN_SOLVER_ERRORS`) are
+     exempt: they leave a usable `.odb`, so they are logged as a warning
+     and the job is post-processed.
    - Module-level filename constants (`FILENAME_PREPROCESS = "preprocess"`,
      etc.) define the on-disk contract between layers.
 
@@ -98,3 +110,17 @@ pattern.
   pre/submit/post step).
 - Source files carry a Bessa-group authorship/credits header block; match it
   when adding modules.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `bessagroup/abaqus2py` (via the `gh` CLI); external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role vocabulary (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`); `wontfix` already exists as a GitHub label, the other four are created on first use. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.

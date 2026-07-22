@@ -18,6 +18,19 @@ def main(odb):
     step = odb.steps[odb.steps.keys()[-1]]
     frames = step.frames
 
+    # A buckle analysis that errored out (e.g. the subspace eigensolver hit
+    # its iteration cap before converging every requested mode) still writes
+    # an odb, but with no mode frames beyond the base state. Fail with the
+    # actual cause instead of an IndexError further down, and do not write
+    # results.pkl: the sample must be marked failed, not silently labeled
+    # non-coilable.
+    if len(frames) < 2:
+        raise RuntimeError(
+            "Linear-buckle odb '{}' contains no buckling-mode frames; the "
+            "eigenvalue analysis did not complete (check the .msg file for "
+            "***ERROR lines).".format(odb.name)
+        )
+
     # get maximum displacements
     variable = "UR"
     directions = (1, 2, 3)

@@ -78,9 +78,9 @@ def test_submit_single_file(recorded_abaqus, tmp_path: Path):
 
     assert len(recorded_abaqus["submit"]) == 1
     inp_arg, num_cpus = recorded_abaqus["submit"][0]
-    # The recorded value is what abaqus_submit was called with; the current
-    # implementation passes the file stem (Path/str).
-    assert str(inp_arg).endswith("job")
+    # _submit passes the full .inp path through to abaqus_submit, which
+    # derives the job name (stem) and working directory (parent) itself.
+    assert Path(inp_arg) == target
     assert num_cpus == 4
 
 
@@ -259,22 +259,19 @@ def test_delete_odb_removes_odb(recorded_abaqus, tmp_path: Path):
     assert not odb_file.exists()
 
 
-def test_submit_restores_cwd_on_exception(monkeypatch, tmp_path: Path):
-    """If abaqus_submit raises, _submit must still restore the cwd."""
-
-    def boom(inp_file, num_cpus):
-        raise RuntimeError("abaqus blew up")
-
-    monkeypatch.setattr(sim_mod, "abaqus_submit", boom)
-
+def test_submit_does_not_change_process_cwd(recorded_abaqus, tmp_path: Path):
+    """_submit routes the working directory through subprocess ``cwd=`` (see
+    abaqus_submit) rather than os.chdir, so the process cwd is never touched
+    and it forwards the full .inp path."""
     original = Path.cwd()
     inp = tmp_path / "job.inp"
     inp.write_text("** dummy")
 
-    with pytest.raises(RuntimeError):
-        sim_mod._submit(inp_file=inp, num_cpus=1, delete_temp_files=False)
+    sim_mod._submit(inp_file=inp, num_cpus=1, delete_temp_files=False)
 
     assert Path.cwd() == original
+    inp_arg, _ = recorded_abaqus["submit"][0]
+    assert Path(inp_arg) == inp
 
 
 def test_abaqus_call_uses_subprocess_list(monkeypatch, tmp_path: Path):
@@ -294,6 +291,9 @@ def test_abaqus_call_uses_subprocess_list(monkeypatch, tmp_path: Path):
     assert isinstance(recorded["cmd"], list)
     assert recorded["cmd"][0] == "abaqus"
     assert recorded["kwargs"].get("check") is True
+    # Must run in the script's directory so CAE's .rec/.rpy files land in the
+    # (writable) working directory, not the read-only job launch directory.
+    assert recorded["kwargs"].get("cwd") == tmp_path
 
 
 def test_abaqus_submit_uses_subprocess_list(monkeypatch, tmp_path: Path):
@@ -306,10 +306,242 @@ def test_abaqus_submit_uses_subprocess_list(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(sim_mod.subprocess, "run", fake_run)
 
-    sim_mod.abaqus_submit(inp_file=Path("job"), num_cpus=2)
+    sim_mod.abaqus_submit(inp_file=tmp_path / "job.inp", num_cpus=2)
 
     assert isinstance(recorded["cmd"], list)
     assert recorded["cmd"][0] == "abaqus"
+    # Submitted by job name (stem), not the full path or filename.
     assert "job=job" in recorded["cmd"]
     assert "cpus=2" in recorded["cmd"]
     assert recorded["kwargs"].get("check") is True
+    # Runs in the .inp's directory so job outputs land in the writable
+    # working directory, not the read-only launch directory.
+    assert recorded["kwargs"].get("cwd") == tmp_path
+
+
+def test_abaqus_call_retries_transient_license_error(
+    monkeypatch, tmp_path: Path
+):
+    """A transient license failure is retried and then succeeds."""
+    calls = {"n": 0}
+
+    def flaky_run(cmd, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise subprocess.CalledProcessError(
+                1,
+                cmd,
+                stderr="ERROR 1A000060: Unable to connect to server",
+            )
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", flaky_run)
+    monkeypatch.setattr(sim_mod.time, "sleep", lambda _: None)
+
+    # Should not raise: the third attempt succeeds.
+    sim_mod.abaqus_call(tmp_path / "preprocess")
+    assert calls["n"] == 3
+
+
+def test_abaqus_call_raises_after_exhausting_license_retries(
+    monkeypatch, tmp_path: Path
+):
+    """A persistent license failure raises once the retry budget is spent."""
+    calls = {"n": 0}
+
+    def always_license_error(cmd, **kwargs):
+        calls["n"] += 1
+        raise subprocess.CalledProcessError(
+            1, cmd, stderr="Failed to startup licensing (err01): 1A000060"
+        )
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", always_license_error)
+    monkeypatch.setattr(sim_mod.time, "sleep", lambda _: None)
+    monkeypatch.setattr(sim_mod, "ABAQUS_LICENSE_MAX_RETRIES", 2)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        sim_mod.abaqus_call(tmp_path / "preprocess")
+    assert calls["n"] == 3  # 1 initial attempt + 2 retries
+
+
+def test_abaqus_call_does_not_retry_analysis_error(
+    monkeypatch, tmp_path: Path
+):
+    """A non-license failure surfaces immediately, without retrying."""
+    calls = {"n": 0}
+    slept: list[float] = []
+
+    def analysis_error(cmd, **kwargs):
+        calls["n"] += 1
+        raise subprocess.CalledProcessError(
+            1, cmd, stderr="Abaqus/CAE Kernel exited with an error"
+        )
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", analysis_error)
+    monkeypatch.setattr(sim_mod.time, "sleep", lambda s: slept.append(s))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        sim_mod.abaqus_call(tmp_path / "preprocess")
+    assert calls["n"] == 1
+    assert slept == []
+
+
+@pytest.fixture
+def submitted_run(monkeypatch, tmp_path: Path):
+    """Stub the abaqus hooks for a full ``run`` and record invocations.
+
+    ``fake_submit`` mimics a solver according to ``behavior["msg_content"]``:
+    it writes a ``.log`` that has started and a ``.msg`` with the given
+    content, so the two completion waits in ``run`` see real files.
+    """
+    calls = {"call": [], "terminate": [], "msg_content": "JOB TIME SUMMARY"}
+
+    def fake_call(script: Path) -> None:
+        calls["call"].append(Path(script))
+        if script.stem == FILENAME_PREPROCESS:
+            (script.parent / "job.inp").write_text("** dummy inp")
+
+    def fake_submit(inp_file: Path, num_cpus: int) -> None:
+        (inp_file.parent / "job.log").write_text(
+            "Begin Analysis Input File Processor"
+        )
+        (inp_file.parent / "job.msg").write_text(calls["msg_content"])
+
+    def fake_terminate(job_name: str, working_dir: Path) -> None:
+        calls["terminate"].append((job_name, Path(working_dir)))
+
+    monkeypatch.setattr(sim_mod, "abaqus_call", fake_call)
+    monkeypatch.setattr(sim_mod, "abaqus_submit", fake_submit)
+    monkeypatch.setattr(sim_mod, "abaqus_terminate", fake_terminate)
+    return calls
+
+
+def test_run_terminates_job_on_timeout(submitted_run, tmp_path: Path):
+    """A completion-wait timeout must terminate the (still running) job so it
+    does not keep holding license tokens, then re-raise."""
+    submitted_run["msg_content"] = "solver still going, no summary"
+
+    sim = AbaqusSimulator(working_directory=tmp_path, max_waiting_time=1)
+    with pytest.raises(TimeoutError):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            simulation_parameters={"name": "job_t"},
+        )
+
+    assert submitted_run["terminate"] == [("job", tmp_path / "job_t")]
+
+
+def test_run_terminates_job_on_stall(submitted_run, tmp_path: Path):
+    """With ``max_stall_time`` set, a dead job fails on the stall clock well
+    before a generous ``max_waiting_time`` and is terminated."""
+    submitted_run["msg_content"] = "solver still going, no summary"
+
+    sim = AbaqusSimulator(
+        working_directory=tmp_path, max_waiting_time=60, max_stall_time=1
+    )
+    with pytest.raises(TimeoutError, match="appears dead"):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            simulation_parameters={"name": "job_s"},
+        )
+
+    assert submitted_run["terminate"] == [("job", tmp_path / "job_s")]
+
+
+def test_run_raises_on_solver_error_lines(submitted_run, tmp_path: Path):
+    """An analysis that reaches JOB TIME SUMMARY but wrote ***ERROR lines
+    must fail with the solver's message, before post-processing runs."""
+    submitted_run["msg_content"] = (
+        " ***ERROR: INCREASE THE NUMBER OF ITERATIONS TO GET THE REQUESTED\n"
+        "JOB TIME SUMMARY\n"
+    )
+
+    sim = AbaqusSimulator(working_directory=tmp_path, max_waiting_time=5)
+    with pytest.raises(RuntimeError, match="INCREASE THE NUMBER"):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            post_py_file=str(tmp_path / "post_script.py"),
+            simulation_parameters={"name": "job_e"},
+        )
+
+    # Only the preprocess CAE call ran; the post script was never invoked.
+    assert len(submitted_run["call"]) == 1
+    assert submitted_run["terminate"] == []
+
+
+def test_run_postprocesses_benign_riks_termination(
+    submitted_run, tmp_path: Path
+):
+    """A Riks limit-point stop writes ***ERROR lines but leaves a usable
+    .odb; the run must proceed to post-processing instead of raising."""
+    submitted_run["msg_content"] = (
+        " ***ERROR: TIME INCREMENT REQUIRED IS LESS THAN THE MINIMUM "
+        "SPECIFIED\n"
+        " ***ERROR: THE ANALYSIS HAS BEEN TERMINATED DUE TO PREVIOUS "
+        "ERRORS\n"
+        "JOB TIME SUMMARY\n"
+    )
+
+    sim = AbaqusSimulator(
+        working_directory=tmp_path, max_waiting_time=5, max_stall_time=5
+    )
+    sim.run(
+        py_file=str(tmp_path / "user_script.py"),
+        post_py_file=str(tmp_path / "post_script.py"),
+        simulation_parameters={"name": "job_riks"},
+    )
+
+    assert len(submitted_run["call"]) == 2  # preprocess + postprocess ran
+    assert submitted_run["terminate"] == []
+
+
+def test_run_raises_on_fatal_error_mixed_with_benign(
+    submitted_run, tmp_path: Path
+):
+    """A genuine fatal ***ERROR is still fatal even alongside a benign
+    termination line, and post-processing must not run."""
+    submitted_run["msg_content"] = (
+        " ***ERROR: INCREASE THE NUMBER OF ITERATIONS TO GET THE "
+        "REQUESTED\n"
+        " ***ERROR: THE ANALYSIS HAS BEEN TERMINATED DUE TO PREVIOUS "
+        "ERRORS\n"
+        "JOB TIME SUMMARY\n"
+    )
+
+    sim = AbaqusSimulator(working_directory=tmp_path, max_waiting_time=5)
+    with pytest.raises(RuntimeError, match="INCREASE THE NUMBER"):
+        sim.run(
+            py_file=str(tmp_path / "user_script.py"),
+            post_py_file=str(tmp_path / "post_script.py"),
+            simulation_parameters={"name": "job_mixed"},
+        )
+
+    assert len(submitted_run["call"]) == 1  # postprocess never ran
+    assert submitted_run["terminate"] == []
+
+
+def test_run_clean_job_reaches_postprocess(submitted_run, tmp_path: Path):
+    """A clean .msg (summary, no error lines) proceeds to post-processing."""
+    sim = AbaqusSimulator(
+        working_directory=tmp_path, max_waiting_time=5, max_stall_time=5
+    )
+    sim.run(
+        py_file=str(tmp_path / "user_script.py"),
+        post_py_file=str(tmp_path / "post_script.py"),
+        simulation_parameters={"name": "job_ok"},
+    )
+
+    assert len(submitted_run["call"]) == 2  # preprocess + postprocess
+    assert submitted_run["terminate"] == []
+
+
+def test_abaqus_terminate_never_raises(monkeypatch, tmp_path: Path):
+    """Termination is best-effort cleanup on an already-failing path; a
+    missing abaqus binary or non-zero exit must not mask the original error.
+    """
+
+    def missing_binary(cmd, **kwargs):
+        raise FileNotFoundError("abaqus not found")
+
+    monkeypatch.setattr(sim_mod.subprocess, "run", missing_binary)
+    sim_mod.abaqus_terminate(job_name="job", working_dir=tmp_path)

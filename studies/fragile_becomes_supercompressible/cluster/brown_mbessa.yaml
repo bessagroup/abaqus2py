@@ -1,0 +1,21 @@
+# @package _global_
+
+# Submit the pipeline to Brown's Oscar SLURM cluster on the mbessa-condo condo
+# allocation. Identical to `brown.yaml` apart from `account`; see that file for
+# the full explanation of the `cluster.*` keys and the ABAQUS module load.
+cluster:
+  enabled: true
+  partition: batch
+  account: mbessa-condo
+  runner: uv run
+  env_setup:
+    - module load abaqus/2024-mbessa-pskx
+  env_vars:
+    HYDRA_FULL_ERROR: "1"
+    # Overarching worker log level (from the global `log_level` key), applied
+    # to the root logger in f3dasm's run_step entry point so workers match the
+    # driver level.
+    F3DASM_LOG_LEVEL: ${log_level}
+hydra:
+  job:
+    chdir: false

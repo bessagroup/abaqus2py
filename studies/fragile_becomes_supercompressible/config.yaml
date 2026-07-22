@@ -5,12 +5,12 @@ defaults:
   - _self_
 
 experimentdata:
-  from_file: ./example_design
+  # from_file: ./example_design
 
-  # from_sampling:
-  #   sampler: latin
-  #   seed: 42
-  #   n_samples: 3
+  from_sampling:
+    sampler: latin_sampler
+    seed: 42
+    n_samples: 50000
 
 imperfection:
   mean: -2.705021452041446
@@ -31,8 +31,20 @@ scripts:
   riks_pre: ${scripts_dir}/supercompressible_riks.py
   riks_post: ${scripts_dir}/supercompressible_riks_pp.py
 
+# Thresholds of the get_results scalar post-processing (post_processing.py).
+# max_strain: material strain above which a coilable design is upgraded to
+#   class 2 (needs the E_max scalar from the Riks post-processing).
+# additional_strain_thresh: post-peak strain margin required for the energy
+#   to be defined.
+# n_interpolation: number of interpolation points for the energy integral.
+get_results:
+  max_strain: 0.02
+  additional_strain_thresh: 0.05
+  n_interpolation: 10000
+
 # Execution mode of the pipeline: "local" or "slurm". Overridden to "slurm"
-# by run_slurm.sh / when selecting cluster=slurm on an HPC system.
+# by run_slurm.sh / when selecting a SLURM cluster (e.g. cluster=brown_mbessa)
+# on an HPC system.
 mode: local
 
 # Root directory for pipeline run folders; null uses the current directory.

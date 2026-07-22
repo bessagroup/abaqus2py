@@ -65,8 +65,11 @@ $\frac{d}{D_1}$	|`ratio_d`
 | File/Folder | Description |
 |-------------|-------------|
 | `main.py` | `f3dasm` Pipeline script that runs the experiment |
+| `post_processing.py` | Scalar `get_results` post-processing (`sigma_crit`, `energy`, 3-class `coilable`) run as the pipeline's final step |
+| `sweep_e_max.py` | Standalone `abaqus python` sweep extracting the scalar `E_max` from the retained Riks odbs of a completed run (license-free; run via `sbatch`) |
+| `backfill_scalars.py` | Applies the `get_results` step to a run that finished before the step existed (optionally merging a `sweep_e_max.py` CSV), updating the run folder in place |
 | `config.yaml` | Configuration file for the experiment |
-| `cluster/` | Hydra config group selecting `local` (in-process) or `slurm` execution |
+| `cluster/` | Hydra config group selecting the execution backend: `local` (in-process), or the `brown` / `brown_mbessa` SLURM configs for Brown's Oscar cluster |
 | `run_slurm.sh` | `sbatch` launcher that submits the pipeline to SLURM |
 | `README.md` | Explanation of this experiment |
 | `img/` | Folder with images used in this file |
@@ -74,7 +77,7 @@ $\frac{d}{D_1}$	|`ratio_d`
 
 > A run folder (under `rootdir`, the current directory by default) is created when the experiment has been run for the first time.
 
-This study is built on the `f3dasm` [`Pipeline`](https://f3dasm.readthedocs.io/en/latest/) API. `main.py` defines a five-step pipeline — `create` → `lin_buckle` → `reset` → `riks` → `post` — and `f3dasm` owns all array-job submission, dependency handling and synchronization for both local and SLURM execution. The `lin_buckle` and `riks` simulations are driven by `abaqus2py`'s `F3DASMAbaqusSimulator`.
+This study is built on the `f3dasm` [`Pipeline`](https://f3dasm.readthedocs.io/en/latest/) API. `main.py` defines a six-step pipeline — `create` → `lin_buckle` → `reset` → `riks` → `post` → `get_results` — and `f3dasm` owns all array-job submission, dependency handling and synchronization for both local and SLURM execution. The `lin_buckle` and `riks` simulations are driven by `abaqus2py`'s `F3DASMAbaqusSimulator`.
 
 ## Usage
 
@@ -89,8 +92,8 @@ This study is built on the `f3dasm` [`Pipeline`](https://f3dasm.readthedocs.io/e
 
 ### Running the experiment on a SLURM cluster
 
-1. Edit `cluster/slurm.yaml` to match your cluster (partition, account, and the `env_setup` module loads your ABAQUS install needs).
-2. Submit with `sbatch run_slurm.sh` (which runs `uv run main.py cluster=slurm ++mode=slurm ++rootdir=...`), or directly: `uv run main.py cluster=slurm ++mode=slurm ++rootdir=/path/to/scratch`.
+1. Pick the cluster config that matches your allocation, or edit one to match your cluster (partition, account, and the `env_setup` module loads your ABAQUS install needs). The shipped configs target Brown's Oscar cluster: `cluster/brown.yaml` (general `default` allocation) and `cluster/brown_mbessa.yaml` (the `mbessa-condo` condo allocation); both load the Bessa-group ABAQUS build with `module load abaqus/2024-mbessa-pskx`.
+2. Submit with `sbatch run_slurm.sh` (which runs `uv run main.py cluster=brown_mbessa ++mode=slurm ++rootdir=...`), or directly: `uv run main.py cluster=brown ++mode=slurm ++rootdir=/path/to/scratch`.
 
 
 ## Results
@@ -105,6 +108,8 @@ The following subdirectories are created:
 * `.hydra`: Contains the `config.yaml` file used to run the experiment.
 * `lin_buckle` and `riks`: Contain the ABAQUS simulation results for the linear buckling and Riks analysis, respectively.
 
+
+The `get_results` step adds the scalar quantities of interest to the output columns of the `ExperimentData`: `sigma_crit` (critical buckling stress, kPa), `energy` (absorbed energy; empty when the Riks curve has no usable post-peak softening branch) and the 3-class `coilable` label (`0` = not coilable, `1` = coilable, `2` = coilable with max material strain above `get_results.max_strain`; the class-2 upgrade needs the `E_max` scalar extracted by the Riks post-processing script).
 
 Lastly, a log file `main.log` is created.
 
@@ -245,7 +250,7 @@ When `from_sampling` is set, the design domain is taken from `config.domain` (th
 | rootdir | `str` or `null` | Root directory under which the pipeline creates its run folder. `null` uses the current directory. |
 
 ### cluster
-The `cluster` config group (`cluster/local.yaml`, `cluster/slurm.yaml`) selects the execution backend. When `cluster.enabled` is `true`, the remaining `cluster.*` keys (`partition`, `account`, `runner`, `env_setup`, `env_vars`) are passed to [`f3dasm.SlurmCluster`](https://f3dasm.readthedocs.io/en/latest/) to generate the SLURM scripts. Select with e.g. `cluster=slurm`.
+The `cluster` config group (`cluster/local.yaml`, `cluster/brown.yaml`, `cluster/brown_mbessa.yaml`) selects the execution backend. When `cluster.enabled` is `true`, the remaining `cluster.*` keys (`partition`, `account`, `runner`, `env_setup`, `env_vars`) are passed to [`f3dasm.SlurmCluster`](https://f3dasm.readthedocs.io/en/latest/) to generate the SLURM scripts. The two Brown configs differ only by `account` (`default` vs `mbessa-condo`) and both load `module load abaqus/2024-mbessa-pskx` via `env_setup`. Select with e.g. `cluster=brown_mbessa`.
 
 ### imperfection
 
@@ -253,6 +258,16 @@ The `cluster` config group (`cluster/local.yaml`, `cluster/slurm.yaml`) selects 
 |--------------|--------|------------------------|
 | mean      | `float` | Mean value of lognormal distribution |
 | std         | `float`    | Standard deviation value of lognormal distribution |
+
+### get_results
+
+Thresholds of the scalar post-processing step (`post_processing.py`).
+
+| Name         | Type   | Description            |
+|--------------|--------|------------------------|
+| max_strain      | `float` | Material strain above which a coilable design is upgraded to class 2 (needs the `E_max` scalar from the Riks post-processing) |
+| additional_strain_thresh | `float` | Post-peak strain margin required for the energy to be defined |
+| n_interpolation | `int` | Number of interpolation points for the energy integral |
 
 ### scripts
 

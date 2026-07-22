@@ -16,8 +16,16 @@ Pipeline steps
                      the Riks stage fans out over all designs again.
 4. ``riks``       -- run the Riks analysis per design (parallel); the Riks
                      pre-processing consumes the buckling odb from each
-                     design's ``lin_buckle/`` sub-directory.
-5. ``post``       -- collect the Riks results into the final ExperimentData.
+                     design's ``lin_buckle/`` sub-directory. Only coilable
+                     designs are simulated: samples whose buckling stage
+                     produced ``coilable = 0`` (or no result at all) are
+                     skipped and keep empty Riks outputs.
+5. ``post``       -- collect the Riks results into the ExperimentData.
+6. ``get_results`` -- re-open every job and derive the scalar quantities
+                     of interest (``sigma_crit``, ``energy`` and the
+                     3-class ``coilable`` label) from the collected raw
+                     fields; pure NumPy/SciPy, run as a sequential
+                     sweep (see ``post_processing.py``).
 """
 
 #                                                                       Modules
@@ -45,7 +53,9 @@ from f3dasm import (
 )
 from f3dasm.design import Domain
 from omegaconf import DictConfig
+from post_processing import SupercompressiblePostProcessor
 
+# Local
 from abaqus2py import F3DASMAbaqusSimulator
 
 f3dasm_logger = logging.getLogger("f3dasm")
@@ -102,6 +112,23 @@ def log_normal_sampler(
 # =============================================================================
 
 
+def _gate_is_open(value) -> bool:
+    """Return whether a gate output allows a stage to run.
+
+    ``None`` (column missing), NaN (upstream stage failed, so the sample has
+    no value) and falsy values (``0``, ``0.0``, ``False``) all close the
+    gate; anything else opens it.
+    """
+    if value is None:
+        return False
+    try:
+        if np.isnan(value):
+            return False
+    except TypeError:
+        pass
+    return bool(value)
+
+
 class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
     """:class:`F3DASMAbaqusSimulator` that writes into a per-run sub-directory.
 
@@ -113,11 +140,23 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
     pipeline machinery while landing the ``lin_buckle/`` and ``riks/`` result
     trees under the pipeline's job directory in both local and SLURM modes.
 
+    A stage can be gated on an upstream result: with ``gate_key`` set, the
+    simulation only runs when that key in the sample's data is present,
+    non-NaN and truthy; otherwise the sample is returned untouched (the job
+    is marked finished with empty outputs for this stage). This both skips
+    physically meaningless runs (a Riks analysis of a non-coilable design)
+    and stops upstream failures from cascading into confusing downstream
+    errors (a sample whose buckling stage failed has no ``coilable`` value,
+    so the gate stays closed).
+
     Parameters
     ----------
     subdir : str
         Sub-directory of ``experiment_sample.project_dir`` to run in
         (``"lin_buckle"`` or ``"riks"``).
+    gate_key : str, optional
+        Name of a scalar in the sample's data that must be present, non-NaN
+        and truthy for the simulation to run. ``None`` (default) always runs.
     **kwargs
         Forwarded verbatim to :class:`F3DASMAbaqusSimulator`.
 
@@ -125,11 +164,14 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
     ----------
     subdir : str
         The per-stage sub-directory name.
+    gate_key : str or None
+        The gating key, or None when the stage is ungated.
     """
 
-    def __init__(self, subdir: str, **kwargs):
+    def __init__(self, subdir: str, gate_key: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.subdir = subdir
+        self.gate_key = gate_key
 
     def execute(
         self,
@@ -138,6 +180,10 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
         **kwargs,
     ) -> ExperimentSample:
         """Point the simulator at ``project_dir/subdir`` and run.
+
+        When ``gate_key`` is set and the sample's value for it is missing,
+        NaN or falsy, the simulation is skipped and the sample is returned
+        unchanged.
 
         Parameters
         ----------
@@ -152,8 +198,14 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
         Returns
         -------
         ExperimentSample
-            The sample with its simulation outputs stored.
+            The sample with its simulation outputs stored, or the untouched
+            sample when the gate is closed.
         """
+        if self.gate_key is not None and not _gate_is_open(
+            experiment_sample.to_dict().get(self.gate_key)
+        ):
+            return experiment_sample
+
         working_directory = Path(experiment_sample.project_dir) / self.subdir
         working_directory.mkdir(parents=True, exist_ok=True)
         self.simulator.working_directory = working_directory
@@ -161,12 +213,15 @@ class StagedAbaqusSimulator(F3DASMAbaqusSimulator):
 
 
 class MarkAllOpen(Block):
-    """Re-open every job so the next parallel step fans out over all designs.
+    """Re-open every job so the next DataGenerator visits all designs.
 
-    A ``parallel`` :class:`~f3dasm.Step` derives its array size from the
-    number of *open* jobs on disk. After the buckling stage finishes, all
-    jobs are ``finished``; this block resets them to ``open`` before the Riks
-    stage. It replaces the legacy inline ``data.mark_all("open")`` call.
+    Every :class:`~f3dasm.DataGenerator` evaluation mode pulls work from
+    the pool of *open* jobs (a ``parallel`` :class:`~f3dasm.Step` also
+    derives its array size from it). After a stage finishes, all jobs
+    are ``finished``; this block resets them to ``open`` before the next
+    stage that needs them -- the Riks simulator in the ``reset`` step
+    and the scalar post-processor in the ``get_results`` step. It
+    replaces the legacy inline ``data.mark_all("open")`` call.
     """
 
     def call(self, data: ExperimentData, **kwargs) -> ExperimentData:
@@ -253,19 +308,36 @@ def build_pipeline(config: DictConfig) -> Pipeline:
     Returns
     -------
     Pipeline
-        The configured five-step pipeline.
+        The configured six-step pipeline.
     """
+    # max_waiting_time only guards against runaway jobs and is sized to the
+    # stage's SLURM walltime; max_stall_time is what catches dead jobs (a
+    # healthy solve updates its .msg/.sta every increment, i.e. every few
+    # seconds). Do NOT size max_waiting_time to the expected solve time: the
+    # 1782918718 run capped the Riks wait at 120 s while healthy solves took
+    # 15-119 s (median 43 s), which killed the slowest ~13% of the designs
+    # mid-solve.
     simulator_lin_buckle = StagedAbaqusSimulator(
         subdir="lin_buckle",
         py_file=config.scripts.lin_buckle_pre,
         post_py_file=config.scripts.lin_buckle_post,
-        max_waiting_time=60,
+        max_waiting_time=600,
+        max_stall_time=60,
     )
     simulator_riks = StagedAbaqusSimulator(
         subdir="riks",
         py_file=config.scripts.riks_pre,
         post_py_file=config.scripts.riks_post,
-        max_waiting_time=120,
+        max_waiting_time=3600,
+        max_stall_time=120,
+        # A Riks analysis is only meaningful for coilable designs; the gate
+        # also skips samples whose buckling stage failed (coilable is NaN).
+        gate_key="coilable",
+    )
+    post_processor = SupercompressiblePostProcessor(
+        max_strain=config.get_results.max_strain,
+        additional_strain_thresh=config.get_results.additional_strain_thresh,
+        n_interpolation=config.get_results.n_interpolation,
     )
 
     return Pipeline(
@@ -285,7 +357,17 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                 dependency="afterok",
                 parallel=True,
                 resources=SlurmResources(
-                    time="00:30:00", mem="4G", cpus_per_task=1
+                    time="00:30:00",
+                    mem="4G",
+                    cpus_per_task=1,
+                    max_array_size=1100,
+                    # Each task's pre-/post-processing runs `abaqus cae`, which
+                    # checks out a QAE token. Brown's shared DSLS pool has only
+                    # 32 QAE tokens (`abaqus licensing dslsstat -usage`), so a
+                    # wider array just stalls in the license queue (or trips
+                    # connection timeouts at saturation). Cap below 32 to leave
+                    # headroom for the pre/post overlap and other users.
+                    max_concurrent=24,
                 ),
                 kwargs={"pass_id": True},
             ),
@@ -303,7 +385,14 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                 dependency="afterok",
                 parallel=True,
                 resources=SlurmResources(
-                    time="01:00:00", mem="4G", cpus_per_task=1
+                    time="01:00:00",
+                    mem="4G",
+                    max_array_size=1100,
+                    # Capped by the 32-token QAE (`abaqus cae`) pool, as in
+                    # lin_buckle above; the Riks solve's SRU tokens are not the
+                    # limiter (24 x 15 = 360 < 768 available).
+                    max_concurrent=24,
+                    cpus_per_task=1,
                 ),
                 kwargs={"pass_id": True},
             ),
@@ -313,6 +402,19 @@ def build_pipeline(config: DictConfig) -> Pipeline:
                 dependency="afterany",
                 resources=SlurmResources(
                     time="00:10:00", mem="2G", cpus_per_task=1
+                ),
+            ),
+            Step(
+                name="get_results",
+                # A DataGenerator only visits open jobs, and after the
+                # collect step every job is finished -- re-open them
+                # first, as in the reset step. The chained DataGenerator
+                # then runs sequentially in-process (mode default): the
+                # sweep is pure NumPy/SciPy, so no SLURM array is needed.
+                block=MarkAllOpen() >> post_processor,
+                dependency="afterok",
+                resources=SlurmResources(
+                    time="00:20:00", mem="4G", cpus_per_task=1
                 ),
             ),
         ],

@@ -54,22 +54,27 @@ def main(odb):
             y.append(node_data)
         riks_results[variable] = np.array(y[0])
 
-    # # deformation
-    # frames = step.frames
-    # nodeSet = odb.rootAssembly.elementSets[' ALL ELEMENTS']
-    # directions = (1, 3,)
-    # variable = 'E'
-    # values = []
-    # for frame in frames:
-    #     varFieldOutputs = frame.fieldOutputs[variable]
-    #     outputs = varFieldOutputs.getSubset(region=nodeSet).values
-    #     output_frame = []
-    #     for direction in directions:
-    #         output_frame.append([output.data[direction - 1]
-    #                             for output in outputs])
-    #     values.append(output_frame)
-
-    # riks_results[variable] = np.array(values)
+    # maximum absolute strain over the model (E field output, components
+    # E11/E33 as in the original get_results), reduced to a single scalar:
+    # the full E field would add tens of MB per design, while only the max
+    # is needed to upgrade the coilable label to class 2 downstream. The
+    # per-frame guard makes odbs without an E field (the request comes
+    # from the element-type-dependent PRESELECT defaults) simply skip the
+    # key, in which case the downstream label stays binary.
+    directions = (1, 3)
+    element_set = odb.rootAssembly.elementSets[" ALL ELEMENTS"]
+    e_max = None
+    for frame in step.frames:
+        if "E" not in frame.fieldOutputs.keys():
+            continue
+        outputs = frame.fieldOutputs["E"].getSubset(region=element_set).values
+        for output in outputs:
+            for direction in directions:
+                value = abs(output.data[direction - 1])
+                if e_max is None or value > e_max:
+                    e_max = value
+    if e_max is not None:
+        riks_results["E_max"] = float(e_max)
 
     with open("results.pkl", "wb") as file:
         pickle.dump(riks_results, file)
